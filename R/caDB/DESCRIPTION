@@ -1,0 +1,21 @@
+Package: caDB
+Title: R Library for Carriots Analytics
+Version: 1.0.0
+Authors@R: person("Aravind", "S", email = "aravind.reddy@altair.com", role = c("aut", "cre"))
+Description: Gets the connection details of the datasource by connecting to the CA server and performs DDL and DML operations on the datasource
+Depends: R (>= 3.4.0)
+Imports:
+		stringr(>= 1.2.0),
+		stringi(>= 1.1.5),
+		httr(>= 1.2.1),
+		jsonlite(>= 1.5),
+		RJDBC(>= 0.2-5),
+		DBI(>= 0.6-1),
+		base64enc(>= 0.1-3)
+License: What license is it under?
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 6.0.1
+Suggests: knitr,
+    rmarkdown
+VignetteBuilder: knitr
