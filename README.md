@@ -6,4 +6,4 @@ caDB - CarriotsAnalytics datasource connector
 
 caML - Default Machine learning algorithms of CA
 
-These libraries are implements in R and python
+These libraries are available in R and python
