@@ -1,0 +1,4 @@
+requests
+jaydebeapi
+pandas
+numpy

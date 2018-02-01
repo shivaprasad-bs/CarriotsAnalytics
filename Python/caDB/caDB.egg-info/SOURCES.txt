@@ -1,0 +1,14 @@
+MANIFEST.in
+README.md
+caDB/__init__.py
+caDB.egg-info/PKG-INFO
+caDB.egg-info/SOURCES.txt
+caDB.egg-info/dependency_links.txt
+caDB.egg-info/requires.txt
+caDB.egg-info/top_level.txt
+caDB/extdata/mariadb-java-client-1.3.3.jar
+caDB/extdata/monetdb-jdbc-2.8.jar
+caDB/extdata/ojdbc6.jar
+caDB/extdata/postgresql-9.2-1002.jdbc4.jar
+caDB/extdata/sqljdbc4.jar
+caDB/extdata/sundb6.jar
