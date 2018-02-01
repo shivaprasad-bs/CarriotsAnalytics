@@ -489,17 +489,17 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
       },
 
       getParam = function(key) {
-        if(!exists(".caParam"))
+        if(!exists(".caParams"))
           stop("CA params were not set, FATAL ERROR!!!")
 
-        .caParam[[key]]
+        .caParams[[key]]
       },
 
       listParams = function() {
-        if(!exists(".caParam"))
+        if(!exists(".caParams"))
           stop("No Params were set")
 
-        names(.caParam)
+        names(.caParams)
       },
 
       getColumnNames = function() {

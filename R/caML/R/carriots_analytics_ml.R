@@ -28,7 +28,7 @@ learn.ca = function() {
   df <- con$load()
 
   #Get the target column name
-  target <- .caParams[["TARGET_NAME"]]
+  target <- con$getParam("TARGET_NAME")
 
   #Perform learn
   modelInfo <- autoClassify(df,target)
