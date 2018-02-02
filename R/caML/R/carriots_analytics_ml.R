@@ -1,21 +1,3 @@
-library(data.table)
-library(Hmisc)
-require(foreign)
-require(MASS)
-require(pls)
-require(rpart)
-library(jsonlite)
-library(missForest)
-library(caret)
-library(mlbench)
-library(aod)
-library(ggplot2)
-library(pROC)
-require(nnet)
-require(zoo)
-require(lubridate)
-require("R.utils")
-
 ##################################################################################
 #' Default LEARN mechanism of CA datasources
 #'
@@ -23,8 +5,9 @@ require("R.utils")
 #'###############################################################################
 #'@export
 learn.ca = function() {
+
   #connect to CA and load data
-  con <- connect.ca()
+  con <- caDB::connect.ca()
   df <- con$load()
 
   #Get the target column name
@@ -45,7 +28,7 @@ learn.ca = function() {
 #'@export
 score.ca = function() {
   #connect to CA and load data
-  con <- connect.ca()
+  con <- caDB::connect.ca()
   df <- con$load()
 
   #get the models back
@@ -61,7 +44,30 @@ score.ca = function() {
 
 }
 
+init <- function() {
+  library(data.table)
+  library(Hmisc)
+  require(foreign)
+  require(MASS)
+  require(pls)
+  require(rpart)
+  library(jsonlite)
+  library(missForest)
+  library(caret)
+  library(mlbench)
+  library(aod)
+  library(ggplot2)
+  library(pROC)
+  require(nnet)
+  require(zoo)
+  require(lubridate)
+  require("R.utils")
+}
+
 autoClassify <- function(df, col2bclassified) {
+
+  #intialize all the required libraries
+  init()
 
   #check the data types
   dat.typ <- capture.output(str(df))
@@ -249,6 +255,9 @@ autoClassify <- function(df, col2bclassified) {
 ############ Score function ########
 
 autoClassifyScore <- function(df.test, blackbox,posteriorCutoff) {
+
+  #intialize all the required libraries
+  init()
 
   df<- df.test
 
