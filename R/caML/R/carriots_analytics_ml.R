@@ -34,7 +34,7 @@ learn.ca = function() {
   modelInfo <- autoClassify(df,target)
 
   #Add the models
-  con$addModel(model = modelInfo$model,label = "myAutoClassify",description = "Titanic_AutoClassify",predictors = modelInfo$predictors)
+  con$addModel(model = modelInfo$model,label = "CADefaultAutoClassify",description = "Default_AutoClassify_model_from_CA",predictors = modelInfo$predictors)
 }
 
 ##################################################################################
@@ -62,13 +62,6 @@ score.ca = function() {
 }
 
 autoClassify <- function(df, col2bclassified) {
-
-  library(data.table)
-  library(Hmisc)
-  require(foreign)
-  require(MASS)
-  attach(df)
-  require(nnet)
 
   #check the data types
   dat.typ <- capture.output(str(df))
@@ -256,11 +249,6 @@ autoClassify <- function(df, col2bclassified) {
 ############ Score function ########
 
 autoClassifyScore <- function(df.test, blackbox,posteriorCutoff) {
-  library(data.table)
-  library(Hmisc)
-  require(foreign)
-  require(MASS)
-  require(nnet)
 
   df<- df.test
 

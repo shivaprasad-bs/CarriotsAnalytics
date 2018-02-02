@@ -1,9 +1,27 @@
 Package: caML
 Title: Provides default Learn and scoring mechanism for Carriots Analytics
-Version: 0.0.0.9000
+Version: 1.0.0
 Authors@R: person("Aravind", "S Reddy", email = "aravind.reddy@altair.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
+Description: Default Machine learning algorithms for Carriots Analytics.
 Depends: R (>= 3.4.0)
+Imports:
+		data.table(>= 1.10.4-3),
+		Hmisc(>= 4.1-1),
+		foreign(>= 0.8-67),
+		MASS(>= 7.3-47),
+		pls(>= 2.6-0),
+		rpart(>= 4.1-11),
+		jsonlite(>= 1.5),
+		missForest(>= 1.4),
+		caret(>= 6.0-78),
+		mlbench(>= 2.1-1),
+		aod(>= 1.3),
+		ggplot2(>= 2.2.1),
+		pROC(>= 1.10.0),
+		nnet(>= 7.3-12),
+		zoo(>= 1.8-1),
+		lubridate(>= 1.7.1),
+		R.utils(>= 2.6.0)
 License: What license is it under?
 Encoding: UTF-8
 LazyData: true
