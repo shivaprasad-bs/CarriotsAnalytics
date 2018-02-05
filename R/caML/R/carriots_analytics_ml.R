@@ -66,7 +66,7 @@ init <- function() {
 
 autoClassify <- function(df, col2bclassified) {
 
-  #intialize all the required libraries
+  #Init
   init()
 
   #check the data types
@@ -255,8 +255,7 @@ autoClassify <- function(df, col2bclassified) {
 ############ Score function ########
 
 autoClassifyScore <- function(df.test, blackbox,posteriorCutoff) {
-
-  #intialize all the required libraries
+  #Init
   init()
 
   df<- df.test
@@ -350,5 +349,6 @@ autoClassifyScore <- function(df.test, blackbox,posteriorCutoff) {
 
   return(df.imp1)
 }
+
 
 
