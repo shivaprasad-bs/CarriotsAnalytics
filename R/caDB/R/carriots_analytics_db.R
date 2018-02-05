@@ -690,7 +690,7 @@ getDatasourceConnection <- function(baseUrl, token, apiKey=NULL,tunnelHost) {
     #aes <- digest::AES(passPhrase,mode="CBC")
     jdbcDriver <- RJDBC::JDBC(
       driverClass = jdbcDetails$driverClass,
-      classPath = system.file("extdata", jdbcDetails$driver, package = "CarriotsAnalytics"),
+      classPath = system.file("extdata", jdbcDetails$driver, package = "caDB"),
       identifier.quote = jdbcDetails$quot
     )
 
