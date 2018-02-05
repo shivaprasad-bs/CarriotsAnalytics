@@ -64,8 +64,9 @@ init <- function() {
   require("R.utils")
 }
 
-autoClassify <- function(df, col2bclassified) {
+# load dataset
 
+autoClassify <- function(df, col2bclassified) {
   #Init
   init()
 
@@ -97,6 +98,12 @@ autoClassify <- function(df, col2bclassified) {
       col2bclassified <- df[[col2bclassified]]
       print("listing is done")
       df[,c(a)] <- NULL
+    }
+    if(typeof(col2bclassified) == "character"){ #check for response data type and ship with the blackbox
+      print("here")
+      y.dat.typ <- "lable"
+    }else{
+      y.dat.typ <- "something else"
     }
   }
   #seperate numeric and non  numeric columns
@@ -236,7 +243,7 @@ autoClassify <- function(df, col2bclassified) {
     }
   }else{
     print("I am not multi")
-    mylogit <- glm(col2bclassified ~ ., data = df.imp1.lev5.num,family = binomial(link="logit"))
+    mylogit <- glm(col2bclassified ~ ., data = df.imp1.lev5.num,family = binomial(link="logit"), x=TRUE)
   }
 
   #remove the regressand from the final data frame
@@ -245,16 +252,22 @@ autoClassify <- function(df, col2bclassified) {
   #get the list of regressors to be used in the model
   col.name.final <- names(df.imp1.lev5.num)
 
+  #check for response data type and ship with the blackbox
+  # (
+  # This is done above
+  # )
+
   #put the model and colnames into a list
-  blackbox <- list(mylogit,fac.lev)
+  mylogit <- serialize(mylogit,NULL)
+  blackbox <- list(mylogit,fac.lev,dat.typ,y.dat.typ)
   model.colnames.lev <- list(blackbox,col.name.final)
   names(model.colnames.lev) <- c("model","predictors")
 
   return(model.colnames.lev)
 }
 ############ Score function ########
-
-autoClassifyScore <- function(df.test, blackbox,posteriorCutoff) {
+# load test dataset
+autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
   #Init
   init()
 
@@ -322,33 +335,44 @@ autoClassifyScore <- function(df.test, blackbox,posteriorCutoff) {
   }
 
   #get the level and model from the black box
-  lev <- length(blackbox[[2]])
-  blackbox <- blackbox[[1]]
+  #blackbox <- model.colnames.lev[1] # They should pass me this
+  #mylogit <- unserialize(blackbox$model[1])
+  #blackbox.lev <- blackbox[[1]]
+  mod <- unserialize(mod.lev.typ[[1]])
+  lev <- length(mod.lev.typ[[2]])
+  typ <- mod.lev.typ[[3]]
   #Instead of an extra arguement called multinomial, check for the levels for resposne in train model and decide for multinomial
   # lev <- length(levels(as.factor(mylogit$lev)))
   if(lev > 2){
     print("Selecting multinomial")
     print("Posterior cutoff is ignored")
-    predictions <- predict(blackbox, newdata=df.imp1, "class")
-    df.imp1$predictions <- predictions
+    predictions <- predict(mod, newdata=df.imp1, "class")
+    df.test$predictions <- as.integer(predictions)
   }else{
     print("Selecting binomial")
-    glm_response_scores <- round(predict(blackbox, df.imp1, type="response"),2)
+    glm_response_scores <- round(predict(mod, df.imp1, type="response"),2)
     #get lables
     if(missing(posteriorCutoff)){
       print("Using default posterior cutoff")
       posteriorCutoff <- 0.5
-      predictions <- ifelse(glm_response_scores>posteriorCutoff, 'yes','no')
-      df.imp1$predictions <- predictions
+      if(mod.lev.typ[[4]] == "lable"){
+        predictions <- ifelse(glm_response_scores>posteriorCutoff, 'yes','no')
+        df.test$predictions <- predictions
+      }else{
+        predictions <- ifelse(glm_response_scores>posteriorCutoff, '1','0')
+        df.test$predictions <- as.integer(predictions)
+      }
     }else{
       print("Using user supplied posterior cutoff")
-      predictions <- ifelse(glm_response_scores>posteriorCutoff, 'yes','no')
-      df.imp1$predictions <- predictions
+      if(mod.lev.typ[[4]] == "lable"){
+        predictions <- ifelse(glm_response_scores>posteriorCutoff, 'yes','no')
+        df.test$predictions <- predictions
+      }else{
+        predictions <- ifelse(glm_response_scores>posteriorCutoff, '1','0')
+        df.test$predictions <- as.integer(predictions)
+      }
     }
   }
 
-  return(df.imp1)
+  return(df.test)
 }
-
-
-
