@@ -171,7 +171,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           #values <- paste(values,paste("(",paste(paste("'",row,"'",sep=""),collapse=","),")",sep = ""))
           values <-
             paste(values, paste("(", paste(apply(row, 1, function(k) {
-              paste(paste("'", gsub("'","''",k), "'", sep = ""), collapse = ",")
+              gsub("'NA'",'NULL',paste(paste("'", gsub("'","''",k), "'", sep = ""), collapse = ","))
             })), ")", sep = ""))
         }
 
