@@ -6,18 +6,44 @@
 #'@export
 learn.ca = function() {
 
-  #connect to CA and load data
+  #connect to CA
   con <- caDB::connect.ca()
-  df <- con$load()
+
+  #Load data
+  df <- NULL
+  result = tryCatch({
+    df <- con$load()
+  },
+  error = function(err) {
+    print("Error while loading the data")
+    msg = paste("Error while loading the data:",err)
+    stop(msg)
+  })
+
 
   #Get the target column name
   target <- con$getParam("TARGET_NAME")
 
   #Perform learn
-  modelInfo <- autoClassify(df,target)
+  modelInfo <- NULL
+  result = tryCatch({
+    modelInfo <- autoClassify(df,target)
+  },
+  error = function(err) {
+    print("Error while performing learn")
+    msg = paste("Error while performing learn:",err)
+    stop(msg)
+  })
 
   #Add the models
-  con$addModel(model = modelInfo$model,label = "CADefaultAutoClassify",description = "Default_AutoClassify_model_from_CA",predictors = modelInfo$predictors)
+  result = tryCatch({
+    con$addModel(model = modelInfo$model,label = "CADefaultAutoClassify",description = "Default_AutoClassify_model_from_CA",predictors = modelInfo$predictors)
+  },
+  error = function(err) {
+    print("Error while adding the models")
+    msg = paste("Error while adding the models:",err)
+    stop(msg)
+  })
 }
 
 ##################################################################################
@@ -29,18 +55,47 @@ learn.ca = function() {
 score.ca = function() {
   #connect to CA and load data
   con <- caDB::connect.ca()
-  df <- con$load()
+
+  #Load data
+  df <- NULL
+  result = tryCatch({
+    df <- con$load()
+  },
+  error = function(err) {
+    print("Error while loading the data")
+    msg = paste("Error while loading the data:",err)
+    stop(msg)
+  })
 
   #get the models back
   modelList <- con$getModels();
+  if(!is.null(modelList))
+    stop("No models we got -- EXITING")
+
   blackboxModel <- modelList[[1]]$model
   model_name <- modelList[[1]]$label
 
   #do Score
-  newDf <- autoClassifyScore(df,blackboxModel)
+  newDf <- NULL
+  result = tryCatch({
+    newDf <- autoClassifyScore(df,blackboxModel)
+  },
+  error = function(err) {
+    print("Error while scoring")
+    msg = paste("Error while scoring:",err)
+    stop(msg)
+  })
 
   #push to CA
-  con$update(df = newDf,modelName = model_name)
+  result = tryCatch({
+    con$update(df = newDf,modelName = model_name)
+  },
+  error = function(err) {
+    print("Error while updating datasource")
+    msg = paste("Error while updating datasource:",err)
+    stop(msg)
+  })
+
 
 }
 

@@ -1,3 +1,4 @@
+CA_DEFAULT_PAGE_SIZE = 10000
 ###############################################################
 #'Get datasource connection
 #'
@@ -214,11 +215,52 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
 
         colType
 
+      },
+
+      updateDFDataTypes = function(df) {
+        if(is.null(self$resultSet))
+          stop("Unable to get the column info/DBI Connection lost")
+
+        colInfo <- NULL
+        result = tryCatch({
+          colInfo <- DBI::dbColumnInfo(self$resultSet)
+        },
+        error = function(err) {
+          print("Error in Getting the column information from ResultSet")
+          msg = paste("Error in Getting the column information from ResultSet:",err)
+          stop(msg)
+        })
+
+        if(is.null(colInfo)) {
+          for (i in 1:nrow(colInfo)) {
+            row <- colInfo[i, ]
+
+            if(as.character(row$field.type) == 'int') {
+              df[[as.character(row$field.name)]] = as.integer(as.character(df[[as.character(row$field.name)]]))
+            }
+            else if(as.character(row$field.type) == 'date') {
+              # works for default format of %Y-%m-%d and typeof() will return double
+              #though class() will return the Date'
+              df[[as.character(row$field.name)]] = as.Date(as.character(df[[as.character(row$field.name)]]))
+            }
+            else if(as.character(row$field.type) == 'timestamp') {
+              df[[as.character(row$field.name)]] = as.POSIXlt(df[[as.character(row$field.name)]],tz = "GMT")
+            }
+          }
+        }
+      },
+      cleanUpResultSet = function() {
+        status = TRUE
+        if (!is.null(self$resultSet))
+          status = DBI::dbClearResult(self$resultSet)
+
+        status
       }
     ),
     ################ public apis/ variables ################################
     public = list (
       dataTypes = '',
+      resultSet = NULL,
       ############### Constructor ######################
       initialize = function(conn_data) {
         private$conn_data <- conn_data
@@ -234,7 +276,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
       },
 
       #//////////////////////////////////////////////////////////////////
-      load = function(columns = NULL,retainHeaders = FALSE) {
+      load = function(columns = NULL,nrows = NULL,retainHeaders = FALSE) {
 
         #Build the load query to prepare data frame
         query <- ""
@@ -270,8 +312,36 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
 
         #Load datasource in to dataframe
         df <- NULL
+
+        #Ensure the previous Results where GCed
+        if(!is.null(self$resultSet))
+          DBI::dbClearResult(self$resultSet)
+
         result = tryCatch({
-          df <- RJDBC::dbGetQuery(private$conn_data$jdbc, query)
+          self$resultSet <- RJDBC::dbSendQuery(private$conn_data$jdbc, query)
+          exit <- FALSE
+          rowsToFetch <- nrows
+          size <- CA_DEFAULT_PAGE_SIZE
+          #Get the results
+          while(!exit) {
+            dfLimit <- DBI::dbFetch(self$resultSet,n=size)
+            if(!is.null(nrows)) {
+              rowsToFetch <- rowsToFetch - CA_DEFAULT_PAGE_SIZE
+              if(rowsToFetch < CA_DEFAULT_PAGE_SIZE)
+                size = rowsToFetch
+              exit <- (rowsToFetch <= 0)
+            }
+            #break if we exceed the no.of rows limit/ there is no result to fetch
+            if(exit || nrow(dfLimit) < 1) {
+              exit <- TRUE
+              if(!is.null(nrows)){}
+              else
+                private$cleanUpResultSet()
+            }
+
+            df <- rbind(df,dfLimit)
+          }
+
         },
         error = function(err) {
           print("Error in Getting dataframe")
@@ -298,8 +368,53 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           stop(msg)
         })
 
+        #update the data types of the data frame
+        private$updateDFDataTypes(df)
 
         df
+      },
+
+      nextSet = function(nrows = NULL) {
+        res = NULL
+        if(is.null(self$resultSet))
+            prints("No results to fetch/ no active db connection")
+        else {
+          result = tryCatch({
+            exit <- FALSE
+            rowsToFetch <- nrows
+            size <- CA_DEFAULT_PAGE_SIZE
+            #Get the results
+            while(!exit) {
+              dfLimit <- DBI::dbFetch(self$resultSet,n=size)
+              if(!is.null(nrows)) {
+                rowsToFetch <- (rowsToFetch - CA_DEFAULT_PAGE_SIZE)
+                if(rowsToFetch < CA_DEFAULT_PAGE_SIZE)
+                  size = rowsToFetch
+                exit <- (rowsToFetch <= 0)
+              }
+              #break if we exceed the no.of rows limit/ there is no result to fetch
+              if(exit || nrow(dfLimit) < 1) {
+                exit <- TRUE
+                if(!is.null(nrows)){}
+                else
+                  private$cleanUpResultSet()
+              }
+
+
+              res <- rbind(res,dfLimit)
+            }
+
+          },
+          error = function(err) {
+            print("Error in Getting dataframe")
+            msg = paste("Error in getting dataframe:",err)
+            stop(msg)
+          })
+
+        }
+        #update the data types of the data frame
+        private$updateDFDataTypes(res)
+        res
       },
 
       # ////////////////////////////////////////////////////////////
@@ -505,6 +620,17 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
       getColumnNames = function() {
         cols <- names(private$conn_data$columns)
         cols
+      },
+      ############### Destructor ######################
+      finalize = function() {
+        result = tryCatch({
+          res <- private$cleanUpResultSet()
+          if(!res)
+            print("Unable to clear the resultsset")
+        },
+        error = function(err) {
+          print("Unable to clear the resultsset")
+        })
       }
     )
   )
