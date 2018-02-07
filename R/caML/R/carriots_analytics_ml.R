@@ -69,7 +69,7 @@ score.ca = function() {
 
   #get the models back
   modelList <- con$getModels();
-  if(!is.null(modelList))
+  if(is.null(modelList))
     stop("No models we got -- EXITING")
 
   blackboxModel <- modelList[[1]]$model
