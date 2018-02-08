@@ -5,43 +5,27 @@
 #'###############################################################################
 #'@export
 learn.ca = function() {
+  withCallingHandlers({
+    #connect to CA
+    con <- caDB::connect.ca()
 
-  #connect to CA
-  con <- caDB::connect.ca()
-
-  #Load data
-  df <- NULL
-  result = tryCatch({
+    #Load data
     df <- con$load()
-  },
-  error = function(err) {
-    print("Error while loading the data")
-    msg = paste("Error while loading the data:",err)
-    stop(msg)
-  })
 
+    #Get the target column name
+    target <- con$getParam("TARGET_NAME")
 
-  #Get the target column name
-  target <- con$getParam("TARGET_NAME")
+    if(is.null(target))
+      stop("No target specified- unable to learn")
 
-  #Perform learn
-  modelInfo <- NULL
-  result = tryCatch({
+    #Perform learn
     modelInfo <- autoClassify(df,target)
-  },
-  error = function(err) {
-    print("Error while performing learn")
-    msg = paste("Error while performing learn:",err)
-    stop(msg)
-  })
 
-  #Add the models
-  result = tryCatch({
+    #Add the models
     con$addModel(model = modelInfo$model,label = "CADefaultAutoClassify",description = "Default_AutoClassify_model_from_CA",predictors = modelInfo$predictors)
   },
-  error = function(err) {
-    print("Error while adding the models")
-    msg = paste("Error while adding the models:",err)
+  error = function(e) {
+    msg = paste(conditionMessage(e), sapply(sys.calls(),function(sc)deparse(sc)[1]), sep="\n   ")
     stop(msg)
   })
 }
@@ -53,50 +37,31 @@ learn.ca = function() {
 #'###############################################################################
 #'@export
 score.ca = function() {
-  #connect to CA and load data
-  con <- caDB::connect.ca()
+  withCallingHandlers({
+    #connect to CA and load data
+    con <- caDB::connect.ca()
 
-  #Load data
-  df <- NULL
-  result = tryCatch({
+    #Load Data
     df <- con$load()
-  },
-  error = function(err) {
-    print("Error while loading the data")
-    msg = paste("Error while loading the data:",err)
-    stop(msg)
-  })
 
-  #get the models back
-  modelList <- con$getModels();
-  if(is.null(modelList))
-    stop("No models we got -- EXITING")
+    #get the models back
+    modelList <- con$getModels();
+    if(is.null(modelList))
+      stop("No models we got -- EXITING")
 
-  blackboxModel <- modelList[[1]]$model
-  model_name <- modelList[[1]]$label
+    #Defaults have only 1 model
+    blackboxModel <- modelList[[1]]$model
+    model_name <- modelList[[1]]$label
 
-  #do Score
-  newDf <- NULL
-  result = tryCatch({
     newDf <- autoClassifyScore(df,blackboxModel)
-  },
-  error = function(err) {
-    print("Error while scoring")
-    msg = paste("Error while scoring:",err)
-    stop(msg)
-  })
 
-  #push to CA
-  result = tryCatch({
+    #push to CA
     con$update(df = newDf,modelName = model_name)
   },
-  error = function(err) {
-    print("Error while updating datasource")
-    msg = paste("Error while updating datasource:",err)
+  error = function(e) {
+    msg = paste(conditionMessage(e), sapply(sys.calls(),function(sc)deparse(sc)[1]), sep="\n   ")
     stop(msg)
   })
-
-
 }
 
 init <- function() {

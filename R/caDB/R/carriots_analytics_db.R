@@ -322,11 +322,18 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           exit <- FALSE
           rowsToFetch <- nrows
           size <- CA_DEFAULT_PAGE_SIZE
+
+          #if no.of rows provided less that default page size
+          if(!is.null(rowsToFetch) && rowsToFetch < CA_DEFAULT_PAGE_SIZE)
+            size <- rowsToFetch
+
           #Get the results
           while(!exit) {
             dfLimit <- DBI::dbFetch(self$resultSet,n=size)
             if(!is.null(nrows)) {
-              rowsToFetch <- rowsToFetch - CA_DEFAULT_PAGE_SIZE
+              rowsToFetch <- rowsToFetch - size
+
+              #To get the left over rows(multiple iteration case)
               if(rowsToFetch < CA_DEFAULT_PAGE_SIZE)
                 size = rowsToFetch
               exit <- (rowsToFetch <= 0)
@@ -383,11 +390,18 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
             exit <- FALSE
             rowsToFetch <- nrows
             size <- CA_DEFAULT_PAGE_SIZE
+
+            #if no.of rows provided less that default page size
+            if(!is.null(rowsToFetch) && rowsToFetch < CA_DEFAULT_PAGE_SIZE)
+              size <- rowsToFetch
+
             #Get the results
             while(!exit) {
               dfLimit <- DBI::dbFetch(self$resultSet,n=size)
               if(!is.null(nrows)) {
-                rowsToFetch <- (rowsToFetch - CA_DEFAULT_PAGE_SIZE)
+                rowsToFetch <- (rowsToFetch - size)
+
+                #To get the left over rows(multiple iteration case)
                 if(rowsToFetch < CA_DEFAULT_PAGE_SIZE)
                   size = rowsToFetch
                 exit <- (rowsToFetch <= 0)
