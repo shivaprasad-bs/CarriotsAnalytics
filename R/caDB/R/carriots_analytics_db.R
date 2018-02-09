@@ -162,19 +162,10 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
 
         query <- paste(query, "VALUES")
 
-        values <- ""
+        #Prepare values
+        values <- paste0(apply(dataframe, 1, function(x) paste0("('", paste0(x, collapse = "', '"), "')")), collapse = ", ")
+        values <- stringr::str_replace_all(values, "'NA'", "NULL")
 
-        for (i in 1:nrow(dataframe)) {
-          if (i > 1)
-            values <- paste(values, ",")
-          row <- dataframe[i, ]
-          #string values are printed with index
-          #values <- paste(values,paste("(",paste(paste("'",row,"'",sep=""),collapse=","),")",sep = ""))
-          values <-
-            paste(values, paste("(", paste(apply(row, 1, function(k) {
-              gsub("'NA'",'NULL',paste(paste("'", gsub("'","''",k), "'", sep = ""), collapse = ","))
-            })), ")", sep = ""))
-        }
 
         query <- paste(query, values)
         print("INSERT QUERY - NOT Printing and it was huge")
