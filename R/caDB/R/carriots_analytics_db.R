@@ -90,7 +90,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         colNames <- colnames(df)
         colNames <- colNames[colNames != colName]
 
-        if (!all(colNames %in% self$getColumnNames()))
+        if (!all(colNames %in% private$getColumnNames()))
           stop("Data Frame has more than one new column compared to fact table")
 
         query <- "CREATE TABLE"
@@ -177,7 +177,8 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         }
 
         query <- paste(query, values)
-        print(query)
+        print("INSERT QUERY - NOT Printing and it was huge")
+        #print(query)
 
         RJDBC::dbSendUpdate(private$conn_data$jdbc, query)
 
@@ -217,6 +218,42 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
 
       },
 
+      updateDataFrameHeaders = function(df = NULL) {
+        if(is.null(df))
+          stop("Unable to load the data frame exiting here")
+
+        if(exists(".ca.modelMap") && length(.ca.modelMap) > 0) {
+          actualCol2Label <- getColumn2Label(private$conn_data$columns)
+          userMapping <- .ca.modelMap
+          col2Label <- list()
+          for(i in names(actualCol2Label)) {
+            if(!is.null(userMapping[[actualCol2Label[[i]]]]))
+              col2Label[[i]] <- userMapping[[actualCol2Label[[i]]]]
+          }
+        }
+        else
+          col2Label <- getColumn2Label(private$conn_data$columns)
+
+        orgNames <- names(df)
+
+        result = tryCatch({
+          for (i in 1:length(orgNames)) {
+            temp <- gsub("\\\"","",names(df)[i])
+            names(df)[i] <- col2Label[[temp]]
+          }
+        },
+        error = function(err) {
+          print("Error in replacing the dataframe headers")
+          msg = paste("Error in replacing the dataframe headers:",err)
+          stop(msg)
+        })
+
+        #update the data types of the data frame
+        private$updateDFDataTypes(df)
+
+        df
+      },
+
       updateDFDataTypes = function(df) {
         if(is.null(self$resultSet))
           stop("Unable to get the column info/DBI Connection lost")
@@ -248,6 +285,11 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
             }
           }
         }
+      },
+      getColumnNames = function() {
+        actualName2Label <- getColumn2Label(private$conn_data$columns)
+        cols <- names(actualName2Label)
+        cols
       },
       cleanUpResultSet = function() {
         status = TRUE
@@ -284,27 +326,21 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           if(exists(".caParams") && !is.null(.caParams[["loadPredictors"]])) {
             if(is.null(columns))
               columns <- .caParams[["predictors"]]
-            colStr <- paste0('"', paste(columns, collapse='", "'), '"')
-            query <-paste("SELECT", colStr)
           }
           else if(exists(".ca.modelMap") && !is.null(.ca.modelMap) && length(.ca.modelMap) > 0){
             columns <- names(.ca.modelMap)
-            colStr <- paste0('"', paste(columns, collapse='", "'), '"')
-            query <-paste("SELECT", colStr)
           }
-          else {
-            query <-
-              paste("SELECT ",
-                    getColumns(colSelected = columns, private$conn_data),
-                    sep = "")
-          }
+
+          query <-
+            paste("SELECT ",
+                  getColumns(colSelected = columns, private$conn_data),
+                  sep = "")
         },
         error = function(err) {
           print("Error in preparing load query for the data frame")
           msg = paste("Error in generating LOAD_QUERY for DATA_FRAME:",err)
           stop(msg)
         })
-
 
         query <- paste(query, "FROM", private$conn_data$factTable)
         # if(!is.null(limit) & !is.na(limit) & limit > 0)
@@ -356,28 +392,8 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           stop(msg)
         })
 
-        if(exists(".ca.modelMap") && length(.ca.modelMap) > 0)
-          col2Label <- .ca.modelMap
-        else
-          col2Label <- getColumn2Label(private$conn_data$columns)
-
-        orgNames <- names(df)
-
-        result = tryCatch({
-          for (i in 1:length(orgNames)) {
-            temp <- gsub("\\\"","",names(df)[i])
-            names(df)[i] <- col2Label[[temp]]
-          }
-        },
-        error = function(err) {
-          print("Error in replacing the dataframe headers")
-          msg = paste("Error in replacing the dataframe headers:",err)
-          stop(msg)
-        })
-
-        #update the data types of the data frame
-        private$updateDFDataTypes(df)
-
+        #update the headers/data types of the data frame
+        df = private$updateDataFrameHeaders(df)
         df
       },
 
@@ -426,8 +442,8 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           })
 
         }
-        #update the data types of the data frame
-        private$updateDFDataTypes(res)
+        #update the headers/data types of the data frame
+        res = private$updateDataFrameHeaders(res)
         res
       },
 
@@ -445,7 +461,14 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         if(exists(".ca.modelMap")){
           #GET Label to column mapping
           result = tryCatch({
-            label2Col <- getColumn2Label(.ca.modelMap)
+            userMapping <- getColumn2Label(.ca.modelMap)
+            actualMapping <- private$conn_data$columns
+            label2Col <- list()
+            for(i in names(userMapping)) {
+              if(!is.null(actualMapping[[userMapping[[i]]]])) {
+                label2Col[[i]] <- actualMapping[[userMapping[[i]]]]
+              }
+            }
             isScore <- TRUE
           },
           error = function(err) {
@@ -458,6 +481,9 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         #Identify the newly added column
         oldColumns <- names(label2Col)
         newColumns <- names(df)
+
+        print(paste("oldColumns:",paste(oldColumns,collapse = ",")))
+        print(paste("newColumns:",paste(newColumns,collapse = ",")))
 
         #get the extra columns added
         extraColumns <- setdiff(newColumns,oldColumns)
@@ -631,7 +657,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         names(.caParams)
       },
 
-      getColumnNames = function() {
+      getColumnLabels = function() {
         cols <- names(private$conn_data$columns)
         cols
       },
