@@ -155,6 +155,10 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         if (nrow(dataframe) < 1)
           stop("No data available in dataframe")
 
+        #handle NA's - Actual DF might have NA strings as well
+        dataframe <- sapply(dataframe, as.character)
+        dataframe[is.na(dataframe)] <- "<NA>"
+
         query <- "INSERT INTO"
         query <- paste(query, tablename)
         colNames <- paste("\"", colnames(dataframe), "\"", sep = "")
@@ -164,7 +168,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
 
         #Prepare values
         values <- paste0(apply(dataframe, 1, function(x) paste0("('", paste0(x, collapse = "', '"), "')")), collapse = ", ")
-        values <- stringr::str_replace_all(values, "'NA'", "NULL")
+        values <- stringr::str_replace_all(values, "'<NA>'", "NULL")
 
 
         query <- paste(query, values)
