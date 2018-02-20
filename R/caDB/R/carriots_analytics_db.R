@@ -167,7 +167,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         query <- paste(query, "VALUES")
 
         #Prepare values
-        values <- paste0(apply(dataframe, 1, function(x) paste0("('", paste0(x, collapse = "', '"), "')")), collapse = ", ")
+        values <- paste0(apply(dataframe, 1, function(x) paste0("('", paste0(gsub("'","''",x), collapse = "', '"), "')")), collapse = ", ")
         values <- stringr::str_replace_all(values, "'<NA>'", "NULL")
 
 
@@ -856,6 +856,17 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
               stop(msg)
             })
           }else if(.caParams[["REQ_TYPE"]] == "FORECAST") {
+            newMapping <- list()
+            # get the name to label mapping
+            col2Label <- getColumn2Label(label2Col)
+
+            #insert mapping only for the predictors selected
+            predictors <- .caParams$predictors
+            for(p in predictors) {
+              newMapping[[col2Label[[p]]]] <- p
+            }
+            label2Col <- newMapping
+            print(label2Col)
             isForecast <- TRUE
           }
         }

@@ -124,7 +124,11 @@ forecast.ca = function() {
     }
 
     #push to CA
-    con$update(df = output$df,modelName = model_name, modelLabel = model_label)
+    newDf <- output$df
+    index <- grep("predictions",colnames(newDf))
+    colnames(newDf)[[index]] <- .caParams$TARGET_LABEL
+    print(names(newDf))
+    con$update(df = newDf,modelName = model_name, modelLabel = model_label)
   },
   error = function(e) {
     msg = paste(conditionMessage(e), sapply(sys.calls(),function(sc)deparse(sc)[1]), sep="\n   ")
@@ -470,7 +474,6 @@ autoForecast <- function(df,target,temporalDim=NULL,forecastStep=NULL,blackboxMo
   output <- list()
   modelInfo <- autoClassify(df,target)
   newDf <- df
-  newDf[[target]] <- df[["Fare"]]
   newDf[["predictions"]] <- df[["Parch"]]
   output$model <- modelInfo$model
   output$df <- newDf
