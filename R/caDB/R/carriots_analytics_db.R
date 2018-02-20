@@ -61,8 +61,8 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
     private = list(
       conn_data = '',
       #///////////////////////////////////////////////
-      createTable = function(df, colName, type) {
-        if (is.null(colName))
+      createTable = function(df, extraColumns, type) {
+        if (is.null(extraColumns))
           stop("Invalid column name")
 
         #Facttable name is already set in the CA App
@@ -88,10 +88,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         private$dropIfExists(md5table)
 
         colNames <- colnames(df)
-        colNames <- colNames[colNames != colName]
-
-        if (!all(colNames %in% private$getColumnNames()))
-          stop("Data Frame has more than one new column compared to fact table")
+        colNames <- setdiff(colNames,extraColumns)
 
         query <- "CREATE TABLE"
         query <- paste(query, md5table, "AS")
@@ -112,11 +109,8 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         print(query)
         RJDBC::dbSendUpdate(private$conn_data$jdbc, query)
 
-        #Add a column first
-        private$addColumn(md5table, name = colName, type = type)
 
         md5table
-
 
       },
       # ///////////////////////////////////////////////////////
@@ -148,6 +142,12 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         }
         print(alterQuery)
         RJDBC::dbSendUpdate(private$conn_data$jdbc, alterQuery)
+      },
+
+      createScoreTable = function(md5table, colList = NULL) {
+        if(is.null(colList) || length(colList) <1)
+          stop("No dimensions to add")
+
       },
 
       #////////////////////////////////////////////////////////////////////
@@ -191,8 +191,11 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         t <- gsub("\"", "", t)
 
         if (RJDBC::dbExistsTable(private$conn_data$jdbc, t)) {
+          print("I came here")
           RJDBC::dbRemoveTable(private$conn_data$jdbc,
                                DBI::dbQuoteIdentifier(private$conn_data$jdbc, t))
+        }else {
+          print("i'm safe")
         }
       },
       #Internal use - BADimention type to DBType match
@@ -217,15 +220,8 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         if(is.null(df))
           stop("Unable to load the data frame exiting here")
 
-        if(exists(".ca.modelMap") && length(.ca.modelMap) > 0) {
-          actualCol2Label <- getColumn2Label(private$conn_data$columns)
-          userMapping <- .ca.modelMap
-          col2Label <- list()
-          for(i in names(actualCol2Label)) {
-            if(!is.null(userMapping[[actualCol2Label[[i]]]]))
-              col2Label[[i]] <- userMapping[[actualCol2Label[[i]]]]
-          }
-        }
+        if(exists(".ca.modelMap") && length(.ca.modelMap) > 0)
+          col2Label <- .ca.modelMap
         else
           col2Label <- getColumn2Label(private$conn_data$columns)
 
@@ -281,6 +277,374 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           }
         }
       },
+      handleSimulateUpdate = function(df = NULL,label2col = NULL,type = NULL)
+      {
+        #Identify the newly added column
+        oldColumns <- names(label2Col)
+        newColumns <- names(df)
+
+        print(paste("oldColumns:",paste(oldColumns,collapse = ",")))
+        print(paste("newColumns:",paste(newColumns,collapse = ",")))
+
+        #get the extra columns added
+        extraColumns <- setdiff(newColumns,oldColumns)
+
+        #If there are more than 1 extra column added- throw error
+        if(length(extraColumns) > 1)
+          stop("More than 1 column added to the dataframe/ headers mismatch in new dataframe - exiting here")
+
+        # newly added column in the dataframe
+        colName <- extraColumns[[1]]
+
+        #check whether the type is passed, else default it to string
+        if(is.null(type))
+          type <- self$dataTypes$STRING
+
+        if(is.null(colName) || is.na(colName))
+          stop("Additional column added is empty or invalid")
+        #changing the dataframe headers back to actual factTable column names
+        result = tryCatch({
+          orgNames <- names(df)
+          for (i in 1:length(orgNames)) {
+            if (orgNames[i] != colName) {
+              label <- label2Col[[orgNames[i]]]
+              if (is.null(label))
+                stop("Dataframe has an unexpected column")
+              names(df)[i] <- label
+              print(paste("label:",label))
+            } else {
+              #This setting should have been done from the application
+              if (exists(paste("carriots.analytics.derived_dim_name"))) {
+                names(df)[i] <- carriots.analytics.derived_dim_name
+                colName <- carriots.analytics.derived_dim_name
+              }
+
+            }
+          }
+        },
+        error = function(err) {
+          print("Error in changing the dataframe headers back to actual factTable column names")
+          msg = paste("Error in changing the dataframe headers back to actual factTable column names:",err)
+          stop(msg)
+        })
+
+        #create table
+        md5Table <- NULL
+        result = tryCatch({
+          md5Table <- private$createTable(df, colName, type)
+        },
+        error = function(err) {
+          print("Error in creating table")
+          msg = paste("Error in CREATE TABLE:",err)
+          stop(msg)
+        })
+
+        #Add a column first
+        private$addColumn(md5Table, name = colName, type = type)
+
+        #insert in to new table
+        result = tryCatch({
+          private$insertData(md5Table, df)
+        },
+        error = function(err) {
+          print("Error in INSERT table")
+          msg = paste("Error in INSERT TABLE:",err)
+          stop(msg)
+        })
+
+        #Add newly created dimension
+        if(exists(".caNewDims")) {
+          myDim <- list()
+          myDim[["name"]] <- carriots.analytics.derived_dim_name
+          myDim[["datasource"]] <- private$conn_data$factTable
+          myDim[["supportTable"]] <- md5Table
+
+          .caNewDims[[1]] <<- myDim
+        }
+
+      },
+      handleScoreUpdate = function(df = NULL,label2Col = NULL,modelName = NULL, modelLabel = NULL) {
+
+        if(is.null(df) || is.null(label2Col) || is.null(modelName) || is.null(modelLabel))
+          stop("Unable to perform update for score request as required params missing: All are mandatory params")
+        # Update request is from score
+        # We have to prerequsite some values which user is not set
+        # For score we have to set the derived dim name and the factable name
+
+        #Identify the newly added column
+        oldColumns <- names(label2Col)
+        newColumns <- names(df)
+
+        print(paste("oldColumns:",paste(oldColumns,collapse = ",")))
+        print(paste("newColumns:",paste(newColumns,collapse = ",")))
+
+        #get the extra columns added
+        extraColumns <- setdiff(newColumns,oldColumns)
+
+        if(!(.caParams$TARGET_LABEL %in% extraColumns))
+          stop(paste("TARGET COLUMN is not available in the data frame, missing:",.caParams$TARGET_LABEL))
+
+        #intialize the placeholder for new Dims
+        if(!exists(".caNewDims"))
+          .caNewDims <<- list()
+
+        #Prepare the fact table Name
+        temp <- private$conn_data$factTable
+        temp <- unlist(strsplit(temp, split = "[.]"))
+        dsName <- NULL
+        schema <- NULL
+        if (length(temp) > 1) {
+          schema <- gsub("\"", "", temp[1])
+          dsName <- gsub("\"", "", temp[2])
+        }else
+          dsName <- temp[1]
+
+         dsName <- paste(dsName,.caParams$TARGET_NAME,.caParams$MODEL_GROUP_NAME,modelName,sep = "_")
+         print(paste("dsName:",dsName))
+         carriots.analytics.fact_table_name <<- digest::digest(dsName,"md5",serialize = FALSE)
+         if(!is.null(schema))
+           carriots.analytics.fact_table_name <<- paste(schema,carriots.analytics.fact_table_name,sep = ".")
+
+        #First add the targetColumn first
+        myDim <- list()
+        dimName = paste(.caParams$TARGET_NAME,.caParams$MODEL_GROUP_NAME,
+                        modelName,sep = "_")
+        print(dimName)
+        dimName = paste("0x",digest::digest(dimName,"md5",serialize = FALSE),sep="_")
+        dimLabel = paste(.caParams$TARGET_LABEL,modelLabel,sep = "_")
+        myDim[["name"]] <- dimName
+        myDim[["label"]] <- dimLabel
+        myDim[["supportTable"]] <- carriots.analytics.fact_table_name
+        myDim[["dataType"]] <- .caParams$TARGET_TYPE
+
+        #add this mapping to label2colMap
+        label2Col[[.caParams$TARGET_LABEL]] <- dimName
+
+        #add the dimension
+        .caNewDims[[length(.caNewDims)+1]] <<- myDim
+
+        #Remove the target column
+        targetColumn <- dimName
+        newColumns <- extraColumns[extraColumns != .caParams$TARGET_LABEL]
+
+        #prepare the new columns now
+        for(val in newColumns) {
+          dimName = paste(.caParams$TARGET_NAME,.caParams$MODEL_GROUP_NAME,
+                          .caParams$MODEL_NAME,sep = "_")
+          print(dimName)
+          dimName = paste("0x",digest::digest(dimName,"md5",serialize = FALSE),sep="_")
+
+          dimLabel = paste(val,modelLabel,sep = "_")
+
+          #add this mapping to label2colMap
+          label2Col[[val]] <- dimName
+
+          myDim <- list()
+          myDim[["name"]] <- dimName
+          myDim[["label"]] <- dimLabel
+          myDim[["supportTable"]] <- carriots.analytics.fact_table_name
+          myDim[["dataType"]] <- 3
+          myDim[["base"]] <- targetColumn
+
+          #add the dimension
+          .caNewDims[[length(.caNewDims)+1]] <<- myDim
+        }
+
+        #changing the dataframe headers back to actual factTable column names
+        extraColNames <- c();
+        result = tryCatch({
+          orgNames <- names(df)
+          for (i in 1:length(orgNames)) {
+            colName <- label2Col[[orgNames[[i]]]]
+            if (is.null(colName))
+              stop("Dataframe has an unexpected column")
+            #Get the extra colNames to omit from table creation
+            if(orgNames[[i]] %in% extraColumns)
+              extraColNames[[length(extraColNames) + 1]] <- colName
+            names(df)[i] <- colName
+          }
+        },
+        error = function(err) {
+          print("Error in changing the dataframe headers back to actual factTable column names")
+          msg = paste("Error in changing the dataframe headers back to actual factTable column names:",err)
+          stop(msg)
+        })
+
+        #create table
+        md5Table <- NULL
+        result = tryCatch({
+          md5Table <- private$createTable(df, extraColNames, type)
+        },
+        error = function(err) {
+          print("Error in creating table")
+          msg = paste("Error in CREATE TABLE:",err)
+          stop(msg)
+        })
+
+        #Add new columns
+        for(val in extraColNames) {
+          if(val == targetColumn)
+            type <- private$getColumnType(.caParams$TARGET_TYPE)
+          else
+            type <- private$getColumnType(class(df[[val]]))
+
+          private$addColumn(md5Table, name = val, type = type)
+        }
+
+        #insert in to new table
+        result = tryCatch({
+          private$insertData(md5Table, df)
+        },
+        error = function(err) {
+          print("Error in INSERT table")
+          msg = paste("Error in INSERT TABLE:",err)
+          stop(msg)
+        })
+
+      },
+      handleForecastUpdate = function(df = NULL,label2Col = NULL,modelName = NULL, modelLabel = NULL) {
+
+        if(is.null(df) || is.null(label2Col) || is.null(modelName) || is.null(modelLabel))
+          stop("Unable to perform update for forecast request as required params missing: All are mandatory params")
+        # Update request is from Forecast
+        # We have to prerequsite some values which user is not set
+        # For score we have to set the derived dim name and the factable name
+
+        #Identify the newly added column
+        oldColumns <- names(label2Col)
+        newColumns <- names(df)
+
+        print(paste("oldColumns:",paste(oldColumns,collapse = ",")))
+        print(paste("newColumns:",paste(newColumns,collapse = ",")))
+
+        #get the extra columns added
+        extraColumns <- setdiff(newColumns,oldColumns)
+
+        if(!(.caParams$TARGET_LABEL %in% extraColumns))
+          stop(paste("TARGET COLUMN is not available in the data frame, missing:",.caParams$TARGET_LABEL))
+
+        #intialize the placeholder for new Dims
+        if(!exists(".caNewDims"))
+          .caNewDims <<- list()
+
+        #Prepare the fact table Name
+        temp <- private$conn_data$factTable
+        temp <- unlist(strsplit(temp, split = "[.]"))
+        dsName <- NULL
+        schema <- NULL
+        if (length(temp) > 1) {
+          schema <- gsub("\"", "", temp[1])
+          dsName <- gsub("\"", "", temp[2])
+        }else
+          dsName <- temp[1]
+
+        dsName <- paste(dsName,.caParams$TARGET_NAME,.caParams$MODEL_GROUP_NAME,modelName,
+                        .caParams$TEMPORAL_DIM,.caParams$FORECAST_STEP, sep = "_")
+        print(paste("dsName:",dsName))
+        carriots.analytics.fact_table_name <<- digest::digest(dsName,"md5",serialize = FALSE)
+        if(!is.null(schema))
+          carriots.analytics.fact_table_name <<- paste(schema,carriots.analytics.fact_table_name,sep = ".")
+
+        #First add the targetColumn first
+        myDim <- list()
+        dimName = paste(.caParams$TARGET_NAME,.caParams$MODEL_GROUP_NAME,
+                        modelName,.caParams$TEMPORAL_DIM,.caParams$FORECAST_STEP,sep = "_")
+        print(dimName)
+        dimName = paste("0x",digest::digest(dimName,"md5",serialize = FALSE),sep="_")
+        dimLabel = paste(.caParams$TARGET_LABEL,modelLabel,sep = "_")
+        myDim[["name"]] <- dimName
+        myDim[["label"]] <- dimLabel
+        myDim[["supportTable"]] <- carriots.analytics.fact_table_name
+        myDim[["dataType"]] <- .caParams$TARGET_TYPE
+        myDim[["modelName"]] <- modelName
+
+        #add this mapping to label2colMap
+        label2Col[[.caParams$TARGET_LABEL]] <- dimName
+
+        #add the dimension
+        .caNewDims[[length(.caNewDims)+1]] <<- myDim
+
+        #Remove the target column
+        targetColumn <- dimName
+        newColumns <- extraColumns[extraColumns != .caParams$TARGET_LABEL]
+
+        #prepare the new columns now
+        for(val in newColumns) {
+          dimName = paste(.caParams$TARGET_NAME,.caParams$MODEL_GROUP_NAME,
+                          .caParams$MODEL_NAME,.caParams$TEMPORAL_DIM,.caParams$FORECAST_STEP,sep = "_")
+          print(dimName)
+          dimName = paste("0x",digest::digest(dimName,"md5",serialize = FALSE),sep="_")
+
+          dimLabel = paste(val,modelLabel,sep = "_")
+
+          #add this mapping to label2colMap
+          label2Col[[val]] <- dimName
+
+          myDim <- list()
+          myDim[["name"]] <- dimName
+          myDim[["label"]] <- dimLabel
+          myDim[["supportTable"]] <- carriots.analytics.fact_table_name
+          myDim[["dataType"]] <- 3
+          myDim[["base"]] <- targetColumn
+          myDim[["modelName"]] <- modelName
+
+          #add the dimension
+          .caNewDims[[length(.caNewDims)+1]] <<- myDim
+        }
+
+        #changing the dataframe headers back to actual factTable column names
+        extraColNames <- c();
+        result = tryCatch({
+          orgNames <- names(df)
+          for (i in 1:length(orgNames)) {
+            colName <- label2Col[[orgNames[[i]]]]
+            if (is.null(colName))
+              stop("Dataframe has an unexpected column")
+            #Get the extra colNames to omit from table creation
+            if(orgNames[[i]] %in% extraColumns)
+              extraColNames[[length(extraColNames) + 1]] <- colName
+            names(df)[i] <- colName
+          }
+        },
+        error = function(err) {
+          print("Error in changing the dataframe headers back to actual factTable column names")
+          msg = paste("Error in changing the dataframe headers back to actual factTable column names:",err)
+          stop(msg)
+        })
+
+        #create table
+        md5Table <- NULL
+        result = tryCatch({
+          md5Table <- private$createTable(df, extraColNames, type)
+        },
+        error = function(err) {
+          print("Error in creating table")
+          msg = paste("Error in CREATE TABLE:",err)
+          stop(msg)
+        })
+
+        #Add new columns
+        for(val in extraColNames) {
+          if(val == targetColumn)
+            type <- private$getColumnType(.caParams$TARGET_TYPE)
+          else
+            type <- private$getColumnType(class(df[[val]]))
+
+          private$addColumn(md5Table, name = val, type = type)
+        }
+
+        #insert in to new table
+        result = tryCatch({
+          private$insertData(md5Table, df)
+        },
+        error = function(err) {
+          print("Error in INSERT table")
+          msg = paste("Error in INSERT TABLE:",err)
+          stop(msg)
+        })
+
+      },
+
       getColumnNames = function() {
         actualName2Label <- getColumn2Label(private$conn_data$columns)
         cols <- names(actualName2Label)
@@ -318,18 +682,36 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         #Build the load query to prepare data frame
         query <- ""
         result = tryCatch({
-          if(exists(".caParams") && !is.null(.caParams[["loadPredictors"]])) {
-            if(is.null(columns))
-              columns <- .caParams[["predictors"]]
-          }
-          else if(exists(".ca.modelMap") && !is.null(.ca.modelMap) && length(.ca.modelMap) > 0){
-            columns <- names(.ca.modelMap)
-          }
+          if(exists(".caParams")) {
+            if(is.null(columns)) {
+              #For learn/forecast selected columns in the dialog is the predictor names
+              if(.caParams[["REQ_TYPE"]] == "LEARN" || .caParams[["REQ_TYPE"]] == "FORECAST") {
+                columns <- .caParams[["predictors"]]
+              }
+              else if(.caParams[["REQ_TYPE"]] == "SCORE") {
+                columns <- names(.ca.modelMap)
+              }
+              if(is.null(columns))
+                stop("Failed to set the predictors from application")
 
-          query <-
-            paste("SELECT ",
-                  getColumns(colSelected = columns, private$conn_data),
-                  sep = "")
+              #Driven through the application
+              colStr <- paste0('"', paste(columns, collapse='", "'), '"')
+              query <-paste("SELECT", colStr)
+            }
+            else {
+              #user defined column names
+              query <-
+                paste("SELECT ",
+                      getColumns(colSelected = columns, private$conn_data),
+                      sep = "")
+            }
+          }else {
+            #user defined column names
+            query <-
+              paste("SELECT ",
+                    getColumns(colSelected = columns, private$conn_data),
+                    sep = "")
+          }
         },
         error = function(err) {
           print("Error in preparing load query for the data frame")
@@ -391,6 +773,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         df = private$updateDataFrameHeaders(df)
         df
       },
+      # //////////////////////////////////////////////////////////////////////////////////////////
 
       nextSet = function(nrows = NULL) {
         res = NULL
@@ -442,169 +825,75 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         res
       },
 
-      # ////////////////////////////////////////////////////////////
+      # /////////////////////////////////////////////////////////////////////////////////////
       update = function(df = NULL,
                         type = NULL,
-                        modelName = NULL)
+                        modelName = NULL,
+                        modelLabel = NULL)
       {
         if (is.null(df) || is.na(df))
           stop("Required parameters were missing")
 
         isScore <- FALSE
+        isForecast <- FALSE
+
         label2Col <- private$conn_data$columns
 
-        if(exists(".ca.modelMap")){
-          #GET Label to column mapping
-          result = tryCatch({
-            userMapping <- getColumn2Label(.ca.modelMap)
-            actualMapping <- private$conn_data$columns
-            label2Col <- list()
-            for(i in names(userMapping)) {
-              if(!is.null(actualMapping[[userMapping[[i]]]])) {
-                label2Col[[i]] <- actualMapping[[userMapping[[i]]]]
-              }
-            }
-            isScore <- TRUE
-          },
-          error = function(err) {
-            print("Error in Getting label to column mapping")
-            msg = paste("Error in Lable 2 column mapping:",err)
-            stop(msg)
-          })
+        #CHeck whether the update call is from score
+        if(exists(".caParams")){
+          if(.caParams[["REQ_TYPE"]] == "SCORE") {
+            #GET Label to column mapping
+            result = tryCatch({
+              if(!exists(".ca.modelMap"))
+                stop("CA model map not available exiting now")
+
+              label2Col <- getColumn2Label(.ca.modelMap)
+              isScore <- TRUE
+            },
+            error = function(err) {
+              print("Error in Getting label to column mapping")
+              msg = paste("Error in Lable 2 column mapping:",err)
+              stop(msg)
+            })
+          }else if(.caParams[["REQ_TYPE"]] == "FORECAST") {
+            isForecast <- TRUE
+          }
         }
-
-        #Identify the newly added column
-        oldColumns <- names(label2Col)
-        newColumns <- names(df)
-
-        print(paste("oldColumns:",paste(oldColumns,collapse = ",")))
-        print(paste("newColumns:",paste(newColumns,collapse = ",")))
-
-        #get the extra columns added
-        extraColumns <- setdiff(newColumns,oldColumns)
-
-        #If there are more than 1 extra column added- throw error
-        if(length(extraColumns) > 1)
-          stop("More than 1 column added to the dataframe/ headers mismatch in new dataframe - exiting here")
-
-        # newly added column in the dataframe
-        colName <- extraColumns[[1]]
-
-        if(is.null(colName) || is.na(colName))
-          stop("Additional column added is empty or invalid")
 
         if(isScore) {
-          # Update request is from score
-          # We have to prerequsite some values which user is not set
-          # For score we have to set the derived dim name and the factable name
-
-          if(!is.null(modelName) && !is.null(.caParams$TARGET_NAME)) {
-            carriots.analytics.derived_dim_name <- paste(.caParams$TARGET_NAME,gsub(" ","_",modelName),sep = "_")
-            if(!is.null(.caParams$LABEL_PREFIX))
-              carriots.analytics.derived_dim_name <- paste(.caParams$LABEL_PREFIX,carriots.analytics.derived_dim_name,sep = "_")
-          }
-
-          temp <- private$conn_data$factTable
-          temp <- unlist(strsplit(temp, split = "[.]"))
-          dsName <- NULL
-          schema <- NULL
-          if (length(temp) > 1) {
-            schema <- gsub("\"", "", temp[1])
-            dsName <- gsub("\"", "", temp[2])
-          }else
-            dsName <- temp[1]
-
-          tableName <- dsName
-          if(!is.null(.caParams$LABEL_PREFIX))
-            tableName <- paste(tableName,.caParams$LABEL_PREFIX,sep = "_")
-
-          tableName <- paste(tableName,.caParams$TARGET_NAME,gsub(" ","_",modelName),sep = "_")
-
-          md5table <- digest::digest(tableName,"md5",serialize = FALSE)
-          if(!is.null(schema))
-            carriots.analytics.fact_table_name <<- paste(schema,md5table,sep = ".")
-          else
-            carriots.analytics.fact_table_name <<- md5table
-
-          #now set the dataType of the derived dimension
-          #if type is null set the TARGET dimensions data type
-          if(is.null(type)){
-            val <- .caParams$TARGET_TYPE
-            if(is.null(val)) val <- 4
-            type <- private$getColumnType(val)
-          }
+          private$handleScoreUpdate(df = df, label2Col = label2Col, modelName = modelName, modelLabel = modelLabel)
         }
-
-        print(paste0("FACT_TABLE:",carriots.analytics.fact_table_name))
-
-        #changing the dataframe headers back to actual factTable column names
-        result = tryCatch({
-          orgNames <- names(df)
-          for (i in 1:length(orgNames)) {
-            if (orgNames[i] != colName) {
-              label <- label2Col[[orgNames[i]]]
-              if (is.null(label))
-                stop("Dataframe has an unexpected column")
-              names(df)[i] <- label
-              print(paste("label:",label))
-            } else {
-              if (exists(paste("carriots.analytics.derived_dim_name"))) {
-                names(df)[i] <- carriots.analytics.derived_dim_name
-                colName <- carriots.analytics.derived_dim_name
-              }
-
-            }
-          }
-        },
-        error = function(err) {
-          print("Error in changing the dataframe headers back to actual factTable column names")
-          msg = paste("Error in changing the dataframe headers back to actual factTable column names:",err)
-          stop(msg)
-        })
+        else if(isForecast) {
+          private$handleScoreUpdate(df = df, label2Col = label2Col,modelName = modelName, modelLabel = modelLabel)
+        }
+        else
+          private$handleSimulateUpdate(df = df, label2Col = label2Col, type = type)
 
 
-        #create table
-        md5Table <- NULL
-        result = tryCatch({
-          md5Table <- private$createTable(df, colName, type)
-        },
-        error = function(err) {
-          print("Error in creating table")
-          msg = paste("Error in CREATE TABLE:",err)
-          stop(msg)
-        })
 
-        #insert in to new table
-        result = tryCatch({
-          private$insertData(md5Table, df)
-        },
-        error = function(err) {
-          print("Error in INSERT table")
-          msg = paste("Error in INSERT TABLE:",err)
-          stop(msg)
-        })
-
-        #Fire an event to reload the table in the app
-        params <-
-          list(dstoken = token,
-               dim = carriots.analytics.derived_dim_name,
-               support_table = md5Table)
-        headerParams <- c('X-CA-apiKey' = apiKey)
-
-        #Reload datasource
-        res <- NULL
-        result = tryCatch({
-          res <- doHttpCall(url, "reloadext", params, headerParams)
-        },
-        error = function(err) {
-          print("Error in RELOAD datasource")
-          msg = paste("Error in RELOAD_DATASOURCE:",err)
-          stop(msg)
-        })
-
-
-        res
+        # Fire an event to reload the table in the app
+        # params <-
+        #   list(dstoken = token,
+        #        dim = carriots.analytics.derived_dim_name,
+        #        support_table = md5Table)
+        # headerParams <- c('X-CA-apiKey' = apiKey)
+        #
+        # #Reload datasource
+        # res <- NULL
+        # result = tryCatch({
+        #   res <- doHttpCall(url, "reloadext", params, headerParams)
+        # },
+        # error = function(err) {
+        #   print("Error in RELOAD datasource")
+        #   msg = paste("Error in RELOAD_DATASOURCE:",err)
+        #   stop(msg)
+        # })
+        #
+        #
+        # res
       },
+
+      # ////////////////////////////////////////////////////////////////////////////////////////////
 
       addModel = function(model = NULL,label = NULL,description=NULL,
                           predictors = NULL, params = NULL) {

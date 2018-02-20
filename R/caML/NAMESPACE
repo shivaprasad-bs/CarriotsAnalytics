@@ -2,3 +2,4 @@
 
 export(learn.ca)
 export(score.ca)
+export(forecast.ca)

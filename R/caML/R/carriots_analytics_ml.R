@@ -22,7 +22,7 @@ learn.ca = function() {
     modelInfo <- autoClassify(df,target)
 
     #Add the models
-    con$addModel(model = modelInfo$model,label = "CADefaultAutoClassify",description = "Default_AutoClassify_model_from_CA",predictors = modelInfo$predictors)
+    con$addModel(model = modelInfo$model,label = "autoClassify",description = "Default_AutoClassify_model_from_CA",predictors = modelInfo$predictors)
   },
   error = function(e) {
     msg = paste(conditionMessage(e), sapply(sys.calls(),function(sc)deparse(sc)[1]), sep="\n   ")
@@ -51,12 +51,80 @@ score.ca = function() {
 
     #Defaults have only 1 model
     blackboxModel <- modelList[[1]]$model
-    model_name <- modelList[[1]]$label
+    model_name <- modelList[[1]]$name
+    model_label <- modelList[[1]]$label
 
     newDf <- autoClassifyScore(df,blackboxModel)
+    index <- grep("predictions",colnames(newDf))
+    colnames(newDf)[[index]] <- .caParams$TARGET_LABEL
 
     #push to CA
-    con$update(df = newDf,modelName = model_name)
+    con$update(df = newDf,modelName = model_name, modelLabel = model_label)
+  },
+  error = function(e) {
+    msg = paste(conditionMessage(e), sapply(sys.calls(),function(sc)deparse(sc)[1]), sep="\n   ")
+    stop(msg)
+  })
+}
+
+##################################################################################
+#' Default FORECAST mechanism for CA datasources
+#'
+#' Forecasts the target dimenstion, and saves the models if there any created
+#' on this forecast request
+#'###############################################################################
+#'@export
+forecast.ca = function() {
+  withCallingHandlers({
+    #connect to CA and load data
+    con <- caDB::connect.ca()
+
+    #Load Data
+    df <- con$load()
+
+    #get the user selected models back from CA
+    modelList <- con$getModels();
+    blackboxModel <- NULL
+    isModelAvailable <- FALSE
+
+    if(!is.null(modelList) && length(modelList) > 0) {
+      #Defaults have only 1 model
+      blackboxModel <- modelList[[1]]$model
+      isModelAvailable <- TRUE
+    }
+
+    #User defined settings in CA
+
+    #Get the target column name
+    target <- con$getParam("TARGET_NAME")
+
+    #Get temporal dimension
+    temporalDim <- con$getParam("TEMPORAL_DIM")
+
+    #Get forecast step
+    forecastStep <- con$getParam("FORECAST_STEP")
+
+    #Actual Forecasting Algorithm
+    output <- autoForecast(df,target,temporalDim,forecastStep,blackboxModel)
+
+    if(is.null(output$df))
+      stop("Algorithm Failed to generate the forecasted dataframe")
+
+    #Add models only if no models passed <- logic might change
+    if(!is.null(output$model) && !isModelAvailable) {
+
+      #Add the models
+      mLabel <- "autoForecast"
+      con$addModel(model = output$model,label = mLabel,description = "Default_AutoForecast_model_from_CA")
+      model_name <- mLabel
+      #If there are any special characters, do MD5- same logic as CA App
+      if(!grepl("^[a-zA-Z0-9\\s\\(\\)_/]+$",model_name))
+        model_name = digest::digest(model_name,"md5",serialize = FALSE)
+      model_label <- mLabel
+    }
+
+    #push to CA
+    con$update(df = output$df,modelName = model_name, modelLabel = model_label)
   },
   error = function(e) {
     msg = paste(conditionMessage(e), sapply(sys.calls(),function(sc)deparse(sc)[1]), sep="\n   ")
@@ -395,4 +463,17 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
   }
 
   return(df.test)
+}
+
+#Just for testing
+autoForecast <- function(df,target,temporalDim=NULL,forecastStep=NULL,blackboxModel=NULL){
+  output <- list()
+  modelInfo <- autoClassify(df,target)
+  newDf <- df
+  newDf[[target]] <- df[["Fare"]]
+  newDf[["predictions"]] <- df[["Parch"]]
+  output$model <- modelInfo$model
+  output$df <- newDf
+
+  output
 }
