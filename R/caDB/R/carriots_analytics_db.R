@@ -381,8 +381,8 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         #get the extra columns added
         extraColumns <- setdiff(newColumns,oldColumns)
 
-        if(!(.caParams$TARGET_LABEL %in% extraColumns))
-          stop(paste("TARGET COLUMN is not available in the data frame, missing:",.caParams$TARGET_LABEL))
+        if(!(.caParams$TARGET_NAME %in% extraColumns))
+          stop(paste("TARGET COLUMN is not available in the data frame, missing:",.caParams$TARGET_NAME))
 
         #intialize the placeholder for new Dims
         if(!exists(".caNewDims"))
@@ -418,14 +418,14 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         myDim[["dataType"]] <- .caParams$TARGET_TYPE
 
         #add this mapping to label2colMap
-        label2Col[[.caParams$TARGET_LABEL]] <- dimName
+        label2Col[[.caParams$TARGET_NAME]] <- dimName
 
         #add the dimension
         .caNewDims[[length(.caNewDims)+1]] <<- myDim
 
         #Remove the target column
         targetColumn <- dimName
-        newColumns <- extraColumns[extraColumns != .caParams$TARGET_LABEL]
+        newColumns <- extraColumns[extraColumns != .caParams$TARGET_NAME]
 
         #prepare the new columns now
         for(val in newColumns) {
@@ -520,8 +520,8 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         #get the extra columns added
         extraColumns <- setdiff(newColumns,oldColumns)
 
-        if(!(.caParams$TARGET_LABEL %in% extraColumns))
-          stop(paste("TARGET COLUMN is not available in the data frame, missing:",.caParams$TARGET_LABEL))
+        if(!(.caParams$TARGET_NAME %in% extraColumns))
+          stop(paste("TARGET COLUMN is not available in the data frame, missing:",.caParams$TARGET_NAME))
 
         #intialize the placeholder for new Dims
         if(!exists(".caNewDims"))
@@ -559,14 +559,14 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         myDim[["modelName"]] <- modelName
 
         #add this mapping to label2colMap
-        label2Col[[.caParams$TARGET_LABEL]] <- dimName
+        label2Col[[.caParams$TARGET_NAME]] <- dimName
 
         #add the dimension
         .caNewDims[[length(.caNewDims)+1]] <<- myDim
 
         #Remove the target column
         targetColumn <- dimName
-        newColumns <- extraColumns[extraColumns != .caParams$TARGET_LABEL]
+        newColumns <- extraColumns[extraColumns != .caParams$TARGET_NAME]
 
         #prepare the new columns now
         for(val in newColumns) {
@@ -687,6 +687,20 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
               #For learn/forecast selected columns in the dialog is the predictor names
               if(.caParams[["REQ_TYPE"]] == "LEARN" || .caParams[["REQ_TYPE"]] == "FORECAST") {
                 columns <- .caParams[["predictors"]]
+
+                # check whether forecast and temporal dims there in the selection list,
+                #if not add it
+                if(.caParams[["REQ_TYPE"]] == "FORECAST") {
+                  temporal <- .caParams[["TEMPORAL_DIM"]]
+                  forecast <- .caParams[["TARGET_NAME"]]
+
+                  if(!(temporal %in% columns))
+                    columns[[length(columns)+1]] <- temporal
+
+                  if(!(forecast %in% columns))
+                    columns[[length(columns)+1]] <- forecast
+                }
+
               }
               else if(.caParams[["REQ_TYPE"]] == "SCORE") {
                 columns <- names(.ca.modelMap)
@@ -862,6 +876,11 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
 
             #insert mapping only for the predictors selected
             predictors <- .caParams$predictors
+
+            #remove the target from the predictors list, as we have the
+            #new forecasted column
+            target <- .caParams[["TARGET_NAME"]]
+            predictors <- predictors[! predictors %in% target]
             for(p in predictors) {
               newMapping[[col2Label[[p]]]] <- p
             }
