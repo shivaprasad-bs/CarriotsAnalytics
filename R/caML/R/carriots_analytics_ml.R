@@ -55,8 +55,6 @@ score.ca = function() {
     model_label <- modelList[[1]]$label
 
     newDf <- autoClassifyScore(df,blackboxModel)
-    index <- grep("predictions",colnames(newDf))
-    colnames(newDf)[[index]] <- .caParams$TARGET_LABEL
 
     #push to CA
     con$update(df = newDf,modelName = model_name, modelLabel = model_label)
@@ -124,10 +122,6 @@ forecast.ca = function() {
     }
 
     #push to CA
-    newDf <- output$df
-    index <- grep("predictions",colnames(newDf))
-    colnames(newDf)[[index]] <- .caParams$TARGET_LABEL
-    print(names(newDf))
     con$update(df = newDf,modelName = model_name, modelLabel = model_label)
   },
   error = function(e) {
@@ -157,11 +151,13 @@ init <- function() {
 }
 
 # load dataset
-
 autoClassify <- function(df, col2bclassified) {
-  #Init
+
+  #init
   init()
 
+  #store response
+  myresponse <- col2bclassified
   #check the data types
   dat.typ <- capture.output(str(df))
 
@@ -351,17 +347,20 @@ autoClassify <- function(df, col2bclassified) {
 
   #put the model and colnames into a list
   mylogit <- serialize(mylogit,NULL)
-  blackbox <- list(mylogit,fac.lev,dat.typ,y.dat.typ)
+  blackbox <- list(mylogit,fac.lev,dat.typ,y.dat.typ,myresponse)
   model.colnames.lev <- list(blackbox,col.name.final)
   names(model.colnames.lev) <- c("model","predictors")
 
   return(model.colnames.lev)
 }
+
 ############ Score function ########
-# load test dataset
 autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
-  #Init
+
+  #init
   init()
+
+  df.test.save <- df.test
 
   df<- df.test
 
@@ -439,7 +438,7 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
     print("Selecting multinomial")
     print("Posterior cutoff is ignored")
     predictions <- predict(mod, newdata=df.imp1, "class")
-    df.test$predictions <- as.integer(predictions)
+    df.test.save$predictions <- as.integer(predictions)
   }else{
     print("Selecting binomial")
     glm_response_scores <- round(predict(mod, df.imp1, type="response"),2)
@@ -449,25 +448,28 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
       posteriorCutoff <- 0.5
       if(mod.lev.typ[[4]] == "lable"){
         predictions <- ifelse(glm_response_scores>posteriorCutoff, 'yes','no')
-        df.test$predictions <- predictions
+        df.test.save$predictions <- predictions
       }else{
         predictions <- ifelse(glm_response_scores>posteriorCutoff, '1','0')
-        df.test$predictions <- as.integer(predictions)
+        df.test.save$predictions <- as.integer(predictions)
       }
     }else{
       print("Using user supplied posterior cutoff")
       if(mod.lev.typ[[4]] == "lable"){
         predictions <- ifelse(glm_response_scores>posteriorCutoff, 'yes','no')
-        df.test$predictions <- predictions
+        df.test.save$predictions <- predictions
       }else{
         predictions <- ifelse(glm_response_scores>posteriorCutoff, '1','0')
-        df.test$predictions <- as.integer(predictions)
+        df.test.save$predictions <- as.integer(predictions)
       }
     }
   }
+  #rename the predictions column to the train response column name
+  names(df.test.save)[length(names(df.test.save))] <- mod.lev.typ[[5]]
 
-  return(df.test)
+  return(df.test.save)
 }
+
 
 #Just for testing
 autoForecast <- function(df,target,temporalDim=NULL,forecastStep=NULL,blackboxModel=NULL){
