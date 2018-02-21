@@ -194,8 +194,6 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           print("I came here")
           RJDBC::dbRemoveTable(private$conn_data$jdbc,
                                DBI::dbQuoteIdentifier(private$conn_data$jdbc, t))
-        }else {
-          print("i'm safe")
         }
       },
       #Internal use - BADimention type to DBType match
@@ -557,6 +555,9 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         myDim[["supportTable"]] <- carriots.analytics.fact_table_name
         myDim[["dataType"]] <- .caParams$TARGET_TYPE
         myDim[["modelName"]] <- modelName
+        myDim[["base"]] <- .caParams$TARGET_NAME
+
+        targetColumn <- dimName
 
         #add this mapping to label2colMap
         label2Col[[.caParams$TARGET_NAME]] <- dimName
@@ -565,7 +566,6 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         .caNewDims[[length(.caNewDims)+1]] <<- myDim
 
         #Remove the target column
-        targetColumn <- dimName
         newColumns <- extraColumns[extraColumns != .caParams$TARGET_NAME]
 
         #prepare the new columns now
@@ -585,7 +585,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           myDim[["label"]] <- dimLabel
           myDim[["supportTable"]] <- carriots.analytics.fact_table_name
           myDim[["dataType"]] <- 3
-          myDim[["base"]] <- targetColumn
+          myDim[["base"]] <- .caParams$TARGET_NAME
           myDim[["modelName"]] <- modelName
 
           #add the dimension
@@ -885,7 +885,6 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
               newMapping[[col2Label[[p]]]] <- p
             }
             label2Col <- newMapping
-            print(label2Col)
             isForecast <- TRUE
           }
         }
@@ -894,7 +893,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           private$handleScoreUpdate(df = df, label2Col = label2Col, modelName = modelName, modelLabel = modelLabel)
         }
         else if(isForecast) {
-          private$handleScoreUpdate(df = df, label2Col = label2Col,modelName = modelName, modelLabel = modelLabel)
+          private$handleForecastUpdate(df = df, label2Col = label2Col,modelName = modelName, modelLabel = modelLabel)
         }
         else
           private$handleSimulateUpdate(df = df, label2Col = label2Col, type = type)

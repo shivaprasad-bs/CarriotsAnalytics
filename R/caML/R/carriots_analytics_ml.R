@@ -122,7 +122,7 @@ forecast.ca = function() {
     }
 
     #push to CA
-    con$update(df = newDf,modelName = model_name, modelLabel = model_label)
+    con$update(df = output$df,modelName = model_name, modelLabel = model_label)
   },
   error = function(e) {
     msg = paste(conditionMessage(e), sapply(sys.calls(),function(sc)deparse(sc)[1]), sep="\n   ")
@@ -475,10 +475,8 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
 autoForecast <- function(df,target,temporalDim=NULL,forecastStep=NULL,blackboxModel=NULL){
   output <- list()
   modelInfo <- autoClassify(df,target)
-  newDf <- df
-  newDf[["predictions"]] <- df[["Parch"]]
   output$model <- modelInfo$model
-  output$df <- newDf
+  output$df <- df
 
   output
 }
