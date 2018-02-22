@@ -238,7 +238,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         })
 
         #update the data types of the data frame
-        private$updateDFDataTypes(df)
+        df <- private$updateDFDataTypes(df)
 
         df
       },
@@ -257,10 +257,9 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           stop(msg)
         })
 
-        if(is.null(colInfo)) {
+        if(!is.null(colInfo)) {
           for (i in 1:nrow(colInfo)) {
             row <- colInfo[i, ]
-
             if(as.character(row$field.type) == 'int') {
               df[[as.character(row$field.name)]] = as.integer(as.character(df[[as.character(row$field.name)]]))
             }
@@ -274,7 +273,33 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
             }
           }
         }
+
+        df
       },
+
+      getDFtoCATypes = function(type) {
+
+        caType <- 1
+        if(!is.null(type)) {
+          dfType <- type
+
+          #In cas of POSIXlt
+          if(length(type) > 1)
+            dfType <- type[[1]]
+
+          if(dfType == "integer")
+            caType <- 3
+          else if(dfType == "numeric")
+            caType <- 4
+          else if(dfType == "Date")
+            caType <- 5
+          else if(dfType == "POSIXlt")
+            caType <- 7
+        }
+
+        caType
+      },
+
       handleSimulateUpdate = function(df = NULL,label2col = NULL,type = NULL)
       {
         #Identify the newly added column
@@ -441,7 +466,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           myDim[["name"]] <- dimName
           myDim[["label"]] <- dimLabel
           myDim[["supportTable"]] <- carriots.analytics.fact_table_name
-          myDim[["dataType"]] <- 3
+          myDim[["dataType"]] <- private$getDFtoCATypes(class(df[[val]]))
           myDim[["base"]] <- targetColumn
 
           #add the dimension
@@ -484,7 +509,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           if(val == targetColumn)
             type <- private$getColumnType(.caParams$TARGET_TYPE)
           else
-            type <- private$getColumnType(class(df[[val]]))
+            type <- private$getColumnType(private$getDFtoCATypes(class(df[[val]])))
 
           private$addColumn(md5Table, name = val, type = type)
         }
@@ -584,7 +609,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           myDim[["name"]] <- dimName
           myDim[["label"]] <- dimLabel
           myDim[["supportTable"]] <- carriots.analytics.fact_table_name
-          myDim[["dataType"]] <- 3
+          myDim[["dataType"]] <- private$getDFtoCATypes(class(df[[val]]))
           myDim[["base"]] <- .caParams$TARGET_NAME
           myDim[["modelName"]] <- modelName
 
@@ -628,7 +653,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           if(val == targetColumn)
             type <- private$getColumnType(.caParams$TARGET_TYPE)
           else
-            type <- private$getColumnType(class(df[[val]]))
+            type <- private$getColumnType(private$getDFtoCATypes(class(df[[val]])))
 
           private$addColumn(md5Table, name = val, type = type)
         }
@@ -682,8 +707,11 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         #Build the load query to prepare data frame
         query <- ""
         result = tryCatch({
-          if(exists(".caParams")) {
-            if(is.null(columns)) {
+
+          #boolean will set if there are not predictors from app/ user defined prection list is empty
+          load_all <- FALSE
+          if(is.null(columns)) {
+            if(exists(".caParams")) {
               #For learn/forecast selected columns in the dialog is the predictor names
               if(.caParams[["REQ_TYPE"]] == "LEARN" || .caParams[["REQ_TYPE"]] == "FORECAST") {
                 columns <- .caParams[["predictors"]]
@@ -705,22 +733,29 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
               else if(.caParams[["REQ_TYPE"]] == "SCORE") {
                 columns <- names(.ca.modelMap)
               }
-              if(is.null(columns))
-                stop("Failed to set the predictors from application")
 
-              #Driven through the application
-              colStr <- paste0('"', paste(columns, collapse='", "'), '"')
-              query <-paste("SELECT", colStr)
+              if(is.null(columns)) {
+                print("Failed to set the predictors from application, hence loading whole datasource")
+                load_all <- TRUE
+              } else {
+                #Driven through the application
+                colStr <- paste0('"', paste(columns, collapse='", "'), '"')
+                query <-paste("SELECT", colStr)
+              }
             }
-            else {
-              #user defined column names
-              query <-
-                paste("SELECT ",
-                      getColumns(colSelected = columns, private$conn_data),
-                      sep = "")
-            }
+            else
+              load_all <- TRUE
           }else {
             #user defined column names
+            query <-
+              paste("SELECT ",
+                    getColumns(colSelected = columns, private$conn_data),
+                    sep = "")
+          }
+
+          if(load_all) {
+            #load all the columns in the datasource
+            columns <- names(private$conn_data$columns)
             query <-
               paste("SELECT ",
                     getColumns(colSelected = columns, private$conn_data),
