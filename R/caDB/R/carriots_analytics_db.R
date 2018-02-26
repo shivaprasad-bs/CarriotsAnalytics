@@ -191,7 +191,6 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         t <- gsub("\"", "", t)
 
         if (RJDBC::dbExistsTable(private$conn_data$jdbc, t)) {
-          print("I came here")
           RJDBC::dbRemoveTable(private$conn_data$jdbc,
                                DBI::dbQuoteIdentifier(private$conn_data$jdbc, t))
         }

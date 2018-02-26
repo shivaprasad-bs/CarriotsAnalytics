@@ -88,6 +88,8 @@ forecast.ca = function() {
     if(!is.null(modelList) && length(modelList) > 0) {
       #Defaults have only 1 model
       blackboxModel <- modelList[[1]]$model
+      model_name <- modelList[[1]]$name
+      model_label <- modelList[[1]]$label
       isModelAvailable <- TRUE
     }
 
