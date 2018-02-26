@@ -990,6 +990,13 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         }
       },
 
+      deleteModels = function() {
+        if(!exists(".ca.modelList"))
+          print("No models to delete")
+        else
+          .ca.modelList <<- NULL
+      },
+
       getParam = function(key) {
         if(!exists(".caParams"))
           stop("CA params were not set, FATAL ERROR!!!")

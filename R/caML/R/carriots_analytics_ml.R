@@ -121,6 +121,10 @@ forecast.ca = function() {
       if(!grepl("^[a-zA-Z0-9\\s\\(\\)_/]+$",model_name))
         model_name = digest::digest(model_name,"md5",serialize = FALSE)
       model_label <- mLabel
+    }else {
+      #Nullify the modelList
+      print("successfully nullified the models")
+      con$deleteModels()
     }
 
     #push to CA
@@ -476,8 +480,11 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
 #Just for testing
 autoForecast <- function(df,target,temporalDim=NULL,forecastStep=NULL,blackboxModel=NULL){
   output <- list()
-  modelInfo <- autoClassify(df,target)
-  output$model <- modelInfo$model
+  if(is.null(blackboxModel)) {
+    modelInfo <- autoClassify(df,target)
+    output$model <- modelInfo$model
+  }
+
   output$df <- df
 
   output
