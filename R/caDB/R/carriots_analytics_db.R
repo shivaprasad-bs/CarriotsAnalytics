@@ -20,6 +20,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
       factTable = "",
       jdbc = NULL,
       columns = NULL,
+      colTypes = NULL,
       engineType = NULL,
       ba2DBTypes = NULL,
       q = NULL,
@@ -28,12 +29,14 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
       initialize = function(factTable,
                             jdbc,
                             columns,
+                            colTypes,
                             ba2DBTypes,
                             qVar,
                             uname) {
         self$factTable <- factTable
         self$jdbc <- jdbc
         self$columns <- columns
+        self$colTypes <- colTypes
         self$ba2DBTypes <- ba2DBTypes
         self$q <- qVar
         self$username <- uname
@@ -90,22 +93,34 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         colNames <- colnames(df)
         colNames <- setdiff(colNames,extraColumns)
 
-        query <- "CREATE TABLE"
-        query <- paste(query, md5table, "AS")
-        colString <-
-          paste(private$conn_data$quot(colNames), ",", collapse = "")
-        colString <- substr(colString, 1, nchar(colString) - 1)
+        query <- paste("CREATE TABLE",md5table)
 
-        orgQuery <-
-          paste("(",
-                "SELECT",
-                colString,
-                "FROM",
-                private$conn_data$factTable,
-                "WHERE 1=2",
-                ")")
-        query <- paste(query, orgQuery)
+        colString <- "("
+        for(i in 1:length(colNames)) {
+          if(i > 1)
+            colString <- paste(colString,",",sep="")
+          colString <- paste(colString,private$conn_data$quot(colNames[[i]]),
+                             private$conn_data$ba2DBTypes[[private$getColumnType(private$conn_data$colTypes[[colNames[[i]]]])]])
+        }
 
+        colString <- paste(colString,")",sep = "")
+
+        # query <- paste(query, md5table, "AS")
+        # colString <-
+        #   paste(private$conn_data$quot(colNames), ",", collapse = "")
+        # colString <- substr(colString, 1, nchar(colString) - 1)
+        #
+        # orgQuery <-
+        #   paste("(",
+        #         "SELECT",
+        #         colString,
+        #         "FROM",
+        #         private$conn_data$factTable,
+        #         "WHERE 1=2",
+        #         ")")
+        # query <- paste(query, orgQuery)
+
+        query <- paste(query,colString,sep = "")
         print(query)
         RJDBC::dbSendUpdate(private$conn_data$jdbc, query)
 
@@ -142,12 +157,6 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         }
         print(alterQuery)
         RJDBC::dbSendUpdate(private$conn_data$jdbc, alterQuery)
-      },
-
-      createScoreTable = function(md5table, colList = NULL) {
-        if(is.null(colList) || length(colList) <1)
-          stop("No dimensions to add")
-
       },
 
       #////////////////////////////////////////////////////////////////////
@@ -704,7 +713,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
       load = function(columns = NULL,nrows = NULL,retainHeaders = FALSE) {
 
         #Build the load query to prepare data frame
-        query <- ""
+        dimData <- list()
         result = tryCatch({
 
           #boolean will set if there are not predictors from app/ user defined prection list is empty
@@ -724,8 +733,14 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
                   if(!(temporal %in% columns))
                     columns[[length(columns)+1]] <- temporal
 
-                  if(!(forecast %in% columns))
-                    columns[[length(columns)+1]] <- forecast
+                  #Remove the Forecast dim if exixts and pass it as measure always
+                  columns <- columns[! columns %in% forecast]
+                  #add forecast dim as measure
+                  dimData[["measure"]] <- forecast
+
+                  #Add the temporal dim as a first element in the list
+                  columns <- columns[! columns %in% temporal]
+                  columns <- c(temporal,columns)
                 }
 
               }
@@ -738,27 +753,19 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
                 load_all <- TRUE
               } else {
                 #Driven through the application
-                colStr <- paste0('"', paste(columns, collapse='", "'), '"')
-                query <-paste("SELECT", colStr)
+                dimData[["coldim"]] <- columns
               }
             }
             else
               load_all <- TRUE
           }else {
             #user defined column names
-            query <-
-              paste("SELECT ",
-                    getColumns(colSelected = columns, private$conn_data),
-                    sep = "")
+            dimData[["coldim"]] <- getColumns(colSelected = columns, private$conn_data)
           }
 
           if(load_all) {
             #load all the columns in the datasource
-            columns <- names(private$conn_data$columns)
-            query <-
-              paste("SELECT ",
-                    getColumns(colSelected = columns, private$conn_data),
-                    sep = "")
+            dimData[["coldim"]] <- getColumns(NULL, private$conn_data)
           }
         },
         error = function(err) {
@@ -767,9 +774,30 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           stop(msg)
         })
 
-        query <- paste(query, "FROM", private$conn_data$factTable)
-        # if(!is.null(limit) & !is.na(limit) & limit > 0)
-        #   query <- paste(query, "LIMIT",limit)
+        print(dimData)
+        params <-
+          list(dstoken = token,
+               dim = jsonlite::toJSON(dimData,pretty = TRUE, auto_unbox = TRUE))
+
+        headerParams <- c('X-CA-apiKey' = apiKey)
+
+        #Reload datasource
+        res <- NULL
+        query <- NULL
+        result = tryCatch({
+          res <- doHttpCall(url, "dsExtConnect", params, headerParams)
+          if(is.null(res[["sql"]]))
+            stop("Unable to retrieve the SQL from CA server, Exiting!!!")
+
+          print(res)
+          query <- res[["sql"]]
+        },
+        error = function(err) {
+          print("Error in RELOAD External")
+          msg = paste("Error in RELOAD_EXTERNAL:",err)
+          stop(msg)
+        })
+
 
         #Load datasource in to dataframe
         df <- NULL
@@ -1050,11 +1078,12 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
   jdbc <- data$jdbc
   factTable <- data$ftable
   columns <- data$columns
+  colTypes <- data$colDataTypes
   quot <- data$quot
   ba2DBTypes <- getDataTypes(data$engineType)
 
   connect_data <-
-    BAConnectionData$new(factTable, jdbc, columns, ba2DBTypes, quot, data$username)
+    BAConnectionData$new(factTable, jdbc, columns,colTypes, ba2DBTypes, quot, data$username)
   conn <- BAConnection$new(connect_data)
   conn
 }
@@ -1137,22 +1166,22 @@ getDataTypes <- function(engineType) {
 
 getColumns <- function(colSelected = NULL, conn) {
   cols <- conn$columns
-  colString <- ""
+  colNames <- NULL
   if (!is.null(colSelected) &  length(colSelected) > 0) {
     length <- length(colSelected)
+    colNames <- c()
     for (i in 1:length) {
-      if (i > 1 & i <= length)
-        colString <- paste(colString, ",")
       if (!is.null(cols[[colSelected[[i]]]])) {
-        colString <- paste(colString, conn$quot(cols[[colSelected[[i]]]]))
+        colNames[[i]] <- cols[[colSelected[[i]]]]
       } else
         stop(paste("ColName:", colSelected[[i]], "doesn't exists in the table"))
       i <- i + 1
     }
-  } else
-    colString <- "*"
+  } else {
+      colNames <- names(getColumn2Label(cols))
+  }
 
-  colString
+  colNames
 }
 
 getColumn2Label <- function(colList) {
@@ -1226,6 +1255,7 @@ getDatasourceConnection <- function(baseUrl, token, apiKey=NULL,tunnelHost) {
     data$jdbc <- conn
     data$quot <- jdbcDetails$quot
     data$columns <- connect_data$columns
+    data$colDataTypes <- connect_data$colDataTypes
     data$engineType <- connect_data$engine_type
 
   } else {
