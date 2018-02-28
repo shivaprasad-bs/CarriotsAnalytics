@@ -308,7 +308,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         caType
       },
 
-      handleSimulateUpdate = function(df = NULL,label2col = NULL,type = NULL)
+      handleSimulateUpdate = function(df = NULL,label2Col = NULL,type = NULL)
       {
         #Identify the newly added column
         oldColumns <- names(label2Col)
@@ -789,7 +789,6 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           if(is.null(res[["sql"]]))
             stop("Unable to retrieve the SQL from CA server, Exiting!!!")
 
-          print(res)
           query <- res[["sql"]]
         },
         error = function(err) {
