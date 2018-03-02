@@ -736,7 +736,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
                   #Remove the Forecast dim if exixts and pass it as measure always
                   columns <- columns[! columns %in% forecast]
                   #add forecast dim as measure
-                  dimData[["measure"]] <- forecast
+                  dimData[["measure"]] <- c(forecast)
 
                   #Add the temporal dim as a first element in the list
                   columns <- columns[! columns %in% temporal]
@@ -778,6 +778,10 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         params <-
           list(dstoken = token,
                dim = jsonlite::toJSON(dimData,pretty = TRUE, auto_unbox = TRUE))
+
+        if(.caParams[["REQ_TYPE"]] == "FORECAST") {
+          params[["advancedModelGroup"]] = .caParams[["MODEL_GROUP_NAME"]]
+        }
 
         headerParams <- c('X-CA-apiKey' = apiKey)
 
@@ -906,7 +910,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
                         modelName = NULL,
                         modelLabel = NULL)
       {
-        if (is.null(df) || is.na(df))
+        if (is.null(df))
           stop("Required parameters were missing")
 
         isScore <- FALSE
@@ -937,6 +941,12 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
 
             #insert mapping only for the predictors selected
             predictors <- .caParams$predictors
+
+            temporal <- .caParams$TEMPORAL_DIM
+
+            #Add the temporal dim as well. if not already exists
+            if(!is.null(temporal) && (! temporal %in% predictors))
+              predictors[[length(predictors)+1]] <- temporal
 
             #remove the target from the predictors list, as we have the
             #new forecasted column
