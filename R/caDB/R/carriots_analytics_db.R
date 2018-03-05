@@ -783,6 +783,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           params[["advancedModelGroup"]] = .caParams[["MODEL_GROUP_NAME"]]
         }
 
+        params[["type"]] <- .caParams[["REQ_TYPE"]]
         headerParams <- c('X-CA-apiKey' = apiKey)
 
         #Reload datasource

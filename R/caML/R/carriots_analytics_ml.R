@@ -156,7 +156,25 @@ init <- function() {
   require("R.utils")
 
   #for forecast
-  library(stringr)
+  require(fpp)
+  require(forecast)
+  library(fBasics)
+  library(timeSeries)
+  library(xts)
+  library(randomForest)
+  library(gbm)
+  library(arm)
+  library(AUC)
+  library(fastAdaboost)
+  library(LiblineaR)
+  library(naivebayes)
+  library(caretEnsemble)
+  library(moments)
+  library(rpart.plot)
+  library(RColorBrewer)
+  library(party)
+  require(stringr)
+  library(parsedate)
 }
 
 # load dataset
