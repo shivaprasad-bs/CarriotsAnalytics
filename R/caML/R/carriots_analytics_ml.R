@@ -105,7 +105,7 @@ forecast.ca = function() {
     forecastStep <- con$getParam("FORECAST_STEP")
 
     #Actual Forecasting Algorithm
-    output <- autoForecast(df,target,temporalDim,forecastStep,blackboxModel)
+    output <- autoForecast(df,temporalDim,target,forecastStep,blackboxModel)
 
     if(is.null(output$df))
       stop("Algorithm Failed to generate the forecasted dataframe")
@@ -154,6 +154,9 @@ init <- function() {
   require(zoo)
   require(lubridate)
   require("R.utils")
+
+  #for forecast
+  library(stringr)
 }
 
 # load dataset
@@ -203,8 +206,14 @@ autoClassify <- function(df, col2bclassified) {
   #seperate numeric and non  numeric columns
   df <- as.data.frame(df)
   df.nums <- sapply(df, is.numeric)
-  df.num <- df[ , df.nums]
-  df.char <- df[, !(df.nums)]
+  df.num <- as.data.frame(df[ , df.nums])
+  #below 2 lines will keep the numeric data frame column names as valid names
+  num.names <- names(df.nums)
+  names(df.nums) <- c(num.names)
+  df.char <- as.data.frame(df[, !(df.nums)])
+  #below 2 lines will keep the character data frame column names as valid names
+  char.names <- names(df.char)
+  names(df.char) <- c(char.names)
 
   #check and impute
   m <- sapply(df, function(x) sum(is.na(x)))
@@ -389,11 +398,18 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
       print("No na, column type is set to numeric")
     }
   }
+
   #seperate numeric and non  numeric columns
   df <- as.data.frame(df)
   df.nums <- sapply(df, is.numeric)
-  df.num <- df[ , df.nums]
-  df.char <- df[, !(df.nums)]
+  df.num <- as.data.frame(df[ , df.nums])
+  #below 2 lines will keep the numeric data frame column names as valid names
+  num.names <- names(df.nums)
+  names(df.nums) <- c(num.names)
+  df.char <- as.data.frame(df[, !(df.nums)])
+  #below 2 lines will keep the character data frame column names as valid names
+  char.names <- names(df.char)
+  names(df.char) <- c(char.names)
 
   #check and impute
   m <- sapply(df, function(x) sum(is.na(x)))
@@ -478,14 +494,451 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
 
 
 #Just for testing
-autoForecast <- function(df,target,temporalDim=NULL,forecastStep=NULL,blackboxModel=NULL){
-  output <- list()
-  if(is.null(blackboxModel)) {
-    modelInfo <- autoClassify(df,target)
-    output$model <- modelInfo$model
+autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model){
+
+  #init
+  init()
+
+  names(df)
+  df.pm <- df
+  date.freq <- df.pm[[dateCol]]
+
+  if(!is.integer(df.pm[[dateCol]])){
+    if(!is.na(str_count(date.freq[1],"\\-")) && str_count(date.freq[1],"\\-") > 0){
+      print("dashes")
+      count.dash <- str_count(date.freq[1],"\\-")
+    }else if((str_count(date.freq[1],"/")) > 0){
+      print("Slashes")
+      count.dash <- str_count(date.freq[1],"/")
+    }
+    colon.exist <- str_count(date.freq[1],"\\:")
+
+    if((is.character(df.pm[[dateCol]]) | is.factor(df.pm[[dateCol]])) && (is.na(parse_iso_8601(date.freq[1])))){
+      print("date came in as character type")
+      df.pm[[dateCol]] <- as.Date(df.pm[[dateCol]])
+    }else if(!is.integer( df.pm[[dateCol]]) && !is.na(parse_iso_8601(date.freq[1]))){
+      print("ISO, treating it later")
+    }else{
+      print("Date better be 4 digit year")
+    }
   }
 
-  output$df <- df
+  l<-0
+  if(exists("count.dash")  && count.dash == 1){
+    print("Just year or year-month format")
+    Setfreq=12
+    break()
+  }else if(exists("count.dash") && count.dash == 2 && colon.exist == 0){
+    for(k in 1:13){
+      month <- substr(df.pm[[dateCol]], start = 6, stop = 7)
+      if(month[k] == month[k]){
+        print("month is repeating beyond 12 counts, considering daily data")
+        Setfreq=365
+        col2forecast_agg <- df.pm
+        x <- ts(col2forecast_agg[[col2forecast]], frequency = Setfreq) #convert to time series
 
-  output
+        ####future date sequence####
+        last.val <- tail(df[[dateCol]],1)
+        last.val.date.yr <- substr(last.val, start = 0, stop = 4)
+        last.val.date.month <- substr(last.val, start = 6, stop = 7)
+        last.val.date.day <- substr(last.val, start = 9, stop = 10)
+        last.val.date.day.future <- as.character(as.integer(last.val.date.day) + fcastFrequency)
+
+        odd.seq <- c(1,3,5,7,9,11)
+        even.seq <- c(4,6,8,10,12)
+
+        if(as.integer(last.val.date.month) %in% odd.seq){
+          print("Its an odd month")
+          end.date <- (paste(last.val.date.yr, last.val.date.month, 31, sep='/')) #create a date from 3 variables
+          future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
+          if(length(future.seq) < fcastFrequency){
+            last.val.date.remaining <- fcastFrequency - length(future.seq)
+            last.val.date.month <- as.character(as.integer(last.val.date.month)+01)
+            end.date <- (paste(last.val.date.yr, last.val.date.month, last.val.date.remaining, sep='/'))
+            future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
+          }
+        }
+        if((as.integer(last.val.date.month) %in% even.seq)){
+          print("Its an odd month")
+          end.date <- (paste(last.val.date.yr, last.val.date.month, 30, sep='/')) #create a date from 3 variables
+          future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
+          if(length(future.seq) < fcastFrequency){
+            last.val.date.remaining <- fcastFrequency - length(future.seq)
+            last.val.date.month <- as.character(as.integer(last.val.date.month)+01)
+            end.date <- (paste(last.val.date.yr, last.val.date.month, last.val.date.remaining, sep='/'))
+            future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
+          }
+        }
+        if(last.val.date.month == "02"){
+
+          print("Its february")
+
+          odd.seq <- c(1,3,5,7,9,11)
+          even.seq <- c(4,6,8,10,12)
+
+          end.date <- (paste(last.val.date.yr, last.val.date.month, 28, sep='/')) #create a date from 3 variables
+          future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
+          while (length(future.seq) < fcastFrequency) {
+            last.val.date.month <- as.character(as.integer(last.val.date.month)+01)
+            if(last.val.date.month  %in% even.seq ){
+              last.val.date.remaining <- fcastFrequency - length(future.seq)
+              if(last.val.date.remaining > 30){
+                end.date <- (paste(last.val.date.yr, last.val.date.month, 30, sep='/'))
+                future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
+              }else{
+                end.date <- (paste(last.val.date.yr, last.val.date.month, last.val.date.remaining, sep='/'))
+                future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
+              }
+            }else{
+              last.val.date.remaining <- fcastFrequency - length(future.seq)
+              if(last.val.date.remaining > 31){
+                end.date <- (paste(last.val.date.yr, last.val.date.month, 31, sep='/'))
+                future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
+              }else{
+                end.date <- (paste(last.val.date.yr, last.val.date.month, last.val.date.remaining, sep='/'))
+                future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
+              }
+            }
+          }
+        }else{
+          future.seq <- future.seq
+        }
+
+      }else{
+        print("month is not repeating beyond 12 counts, considering monthly data")
+        Setfreq=12
+        col2forecast_agg <- df.pm
+        x <- ts(col2forecast_agg[[col2forecast]], frequency = Setfreq) #convert to time series
+        break()
+      }
+    }
+  }else{
+    Setfreq=8760
+    #check for ISO 8601
+    if(is.null(parse_iso_8601(date.freq[1])) == FALSE && !is.integer(df.pm[[dateCol]])){
+      print("Date is ISO 8601")
+      df.pm$date <- as.POSIXct(df.pm[[dateCol]],format="%Y-%m-%dT%H:%M")
+      l=0
+      for(k in 1:10){
+        dailydata <- strsplit(date.freq[10], "T")
+        time.stamp <- dailydata[[1]][2]
+        hour <- substr(time.stamp, start = 1, stop = 2)
+        if(isTRUE(hour == hour)){
+          print("hour is repeating, need mean aggregation")
+          l = l+1
+        }
+      }
+      if(l > 2){
+        df.pm$date <- as.POSIXct(df.pm[[dateCol]],format="%Y-%m-%dT%H:%M")
+        print("Aggregation done")
+        col2forecast_agg <- aggregate(df.pm[[col2forecast]],list(hour=cut(as.POSIXct(df.pm$date), "hour")),mean)
+        date.first.element <- as.Date(col2forecast_agg$hour[1])
+        year <- format(as.Date(date.first.element, format="%m/%d/%Y"),"%Y") #need for ts frequency
+        month <- format(as.Date(date.first.element, format="%m/%d/%Y"),"%m") #need for ts frequency
+        x <- ts(col2forecast_agg$x, frequency = Setfreq) #ts conversion for aggregate case
+
+        #future sequence
+        last.val <- tail(df[[dateCol]],1)
+        last.val.date <- parse_iso_8601(last.val)
+        last.val.date.yr <- substr(last.val.date, start = 0, stop = 4)
+        last.val.date.month <- substr(last.val.date, start = 6, stop = 7)
+        last.val.date.day <- substr(last.val.date, start = 9, stop = 10)
+        last.val.date.hour <- substr(last.val.date, start = 12, stop = 13)
+
+        future.seq <- list()
+        if((as.numeric(last.val.date.hour) + fcastFrequency) < 24){
+          future.seq <- seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour,0,0),
+                            ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,fcastFrequency,0,0), "hour")
+        }else{
+          while ((length(future.seq) < fcastFrequency)) {
+
+            if(fcastFrequency - as.numeric(length(future.seq)) > 24){
+              future.seq <- append(future.seq,(seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour,0,0),
+                                                   ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,24,0,0, tz="EST"), "hour")))
+
+              last.val.hour.remaining <- as.numeric(fcastFrequency - length(future.seq)) -1
+
+
+              last.val.date.hour <- substr(future.seq[length(future.seq)], start = 12, stop = 13)
+              if(last.val.date.hour == 00){
+                last.val.date.day <- as.character(as.integer(last.val.date.day)+01)
+                last.val.date.hour <- 1
+              }else{
+                last.val.date.day = substr(future.seq[length(future.seq)], start = 9, stop = 10)
+              }
+
+            }else{
+              last.val.hour.remaining <- as.numeric(fcastFrequency - length(future.seq)) - 1
+
+              if(last.val.date.hour == 00){
+                last.val.date.day <- as.character(as.integer(last.val.date.day)+01)
+                last.val.date.hour <- 1
+              }else{
+                last.val.date.day = substr(future.seq[length(future.seq)], start = 9, stop = 10)
+              }
+              future.seq <- append(future.seq,(seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour,0,0),
+                                                   ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.hour.remaining,0,0, tz="EST"), "hour")))
+            }
+          }
+        }
+
+      }else{
+        col2forecast_agg <- df.pm[[col2forecast]]
+        print("Non ISO")
+        year <- year(as.Date(col2forecast_agg[[dateCol]][1], format = "%m/%d/%Y"))
+        month <- month(as.Date(col2forecast_agg[[dateCol]][1], format = "%m/%d/%Y"))
+        x <- ts(col2forecast_agg[[col2forecast]], frequency = Setfreq) #convert to time series
+      }
+    }
+  }
+
+  ##year has just 4 digit year coming as integer
+  if(is.integer(df.pm[[dateCol]])){
+    dateCol.diff <- df.pm[[dateCol]][1] - (df.pm[[dateCol]][2]) #df.pm[[dateCol]] changes in line 43, check this
+    if(dateCol.diff != 0){
+      check.order <- df.pm[order(df.pm[[dateCol]])]
+      dateCol.diff <- check.order[[dateCol]][1] - (check.order[[dateCol]][2])
+    }
+    #check if the year is repeating
+    if(is.integer(df.pm[[dateCol]]) && (is.unsorted(df.pm[[dateCol]])) | dateCol.diff == 0){
+      col.names <- names(df.pm)
+      for(j in 1:length(col.names)){
+        if(col.names[j] != dateCol){
+          print (col.names[j])
+          check.order <-  df.pm[order(df.pm[[col.names[1]]],df.pm[[dateCol]]),] #order will affect all columns, need to take
+          diff <-  check.order[[dateCol]][2] -  check.order[[dateCol]][1]
+          print(diff)
+          print(check.order)
+          if(diff == 1){
+            #df.pm[[dateCol]] <-  df.
+            print("achieved")
+            col2forecast_agg <- check.order
+            Setfreq <- 1
+            x <- ts(col2forecast_agg[[col2forecast]], frequency = Setfreq) #convert to time series
+
+            names(col2forecast_agg)[names(col2forecast_agg) == col2forecast] <- 'x'
+
+            #future date sequence
+            from.val <-  (as.integer(tail((substr(df[[dateCol]], start = 1, stop = 4)),1)) + 1)
+            to.val <- from.val+(fcastFrequency-1)
+            future.seq <- seq(from.val,to.val)
+
+            break()
+          }
+        }
+      }
+    }
+  }
+
+
+  #Stationarity check
+  x.diff <- ndiffs(col2forecast_agg[[col2forecast]])
+  if(x.diff == 1){
+    print("Taking first difference")
+    first.diff <- diff(col2forecast_agg[[col2forecast]])
+    col2forecast_agg <- col2forecast_agg[nrow(col2forecast_agg)-1:nrow(col2forecast_agg), ]
+    col2forecast_agg$x <- first.diff
+  }else if(x.diff ==2){
+    print("Taking second difference")
+    col2forecast_agg$x <- diff(diff(col2forecast_agg[[col2forecast]]))
+  }else{
+    print("Time series is stationary")
+  }
+  ##########Build models##########
+  if(missing(supplied_model)){
+    #linear model
+    linear.trend <- tslm(x ~ + trend)
+
+    #Linear with seasonality
+    if(Setfreq > 1){
+      linear.season <- tslm(x ~+ trend + season)
+      #linear seasonality model
+      linear.season.rsq <- (linear.season$residuals^2)
+      linear.season.n.na <- length(linear.season.rsq)- length(na.omit(linear.season.rsq))
+      linear.season.mse <- sum(na.omit(linear.season.rsq))/(length(linear.season.rsq)-linear.season.n.na)
+      linear.season <- serialize(linear.season,NULL)
+    }else{
+      linear.season.mse <- NA
+      linear.season <-  NA
+    }
+
+    #arima model
+    fit.aa <- auto.arima(x,max.order=9, stepwise = TRUE, xreg = NULL)
+
+    #Neurel net
+    fit.nn<- nnetar(x, repeats = 2)
+
+    #evaluate model accuracy
+
+    #linear trend model
+    linear.trend.rsq <- (linear.trend$residuals^2)
+    linear.trend.n.na <- length(linear.trend.rsq)- length(na.omit(linear.trend.rsq))
+    linear.trend.mse <- sum(na.omit(linear.trend.rsq))/(length(linear.trend.rsq)-linear.trend.n.na)
+
+    #linear seasonality is conditional on Setfreq object, see above
+
+    #arima
+    aa.rsq <- (fit.aa$residuals^2)
+    aa.n.na <- length(aa.rsq)- length(na.omit(aa.rsq))
+    aa.mse <- sum(na.omit(aa.rsq))/(length(aa.rsq)-aa.n.na)
+
+    # neural net
+    nn.rsq <- (fit.nn$residuals^2)
+    nn.n.na <- length(nn.rsq)- length(na.omit(nn.rsq))
+    nn.mse <- sum(na.omit(nn.rsq))/(length(nn.rsq)-nn.n.na)
+
+    #compare model accuracy
+    model.accuracy <- list(linear.trend.mse,linear.season.mse,aa.mse,nn.mse)
+    names(model.accuracy) <- c("linear trend", "linear season and trend", "auto arima", "neural nets")
+    best_model <- model.accuracy[which.min(model.accuracy)]
+
+
+    #serialize models
+    linear.trend <- serialize(linear.trend,NULL)
+    #linear seasonal model is above, condition based
+    fit.aa <- serialize(fit.aa,NULL)
+    #fit.aa.xreg <- serialize(fit.aa.xreg,NULL)
+    fit.nn <- serialize(fit.nn,NULL)
+    #fit.nn.xreg <- serialize(fit.nn.xreg,NULL)
+
+    #list and name the serialized models
+    #blackbox.bestmodel <- linear.season
+    blackbox <- list(linear.trend,linear.season,fit.aa,fit.nn)
+    names(blackbox) <- c("linear trend", "Linear season and trend",
+                         "auto arima","neural nets")
+
+    if(names(best_model) == "linear trend"){
+      print("Best model is linear trend")
+      blackbox <- (blackbox[[1]])
+    }
+    if(names(best_model) == "linear season and trend"){
+      print("Best model is linear season and trend")
+      blackbox <- (blackbox[[2]])
+    }
+    if(names(best_model) == "auto arima"){
+      print("Best model is auto arima")
+      blackbox <- (blackbox[[3]])
+    }
+    if(names(best_model) == "neural nets"){
+      print("Best model is neural nets")
+      blackbox <- (blackbox[[4]])
+    }
+    supplied = 0
+  }else{
+    print("model supplied")
+    blackbox <- supplied_model
+    supplied = 1
+  }
+
+  blackbox.names <- names(blackbox)
+  myforecastModel <- unserialize(blackbox, NULL)
+
+
+
+  #check for xreg and fake xreg
+  model.names <- names(myforecastModel)
+  a=1
+  model.typ <- NULL
+  if("xreg" %in% model.names){
+    #check for fake xreg which is just a sequence
+    xreg.count = 0
+    for(m in 1:4){
+      fake.xreg <- (myforecastModel$xreg[m] + 1) - myforecastModel$xreg[m]
+      print("looping for xreg")
+      if(fake.xreg == 1){
+        xreg.count = xreg.count + 1
+      }
+    }
+    if(xreg.count == 4){
+      print("Fake xreg passed with auto arima. It is just a sequence")
+      xreg = NULL
+    }else if(xreg < 4){
+      print("Found xreg")
+      xreg <-
+        xreg <- as.data.frame(xreg)
+    }
+  }else{
+    print("No xregs found")
+    xreg = NULL
+  }
+
+  for(a in 1:length(model.names)){
+    print(a)
+    if(model.names[a] == "nnetargs"){
+      print("found nnetargs")
+      model.typ = "nnetargs"
+    }
+    if(model.names[a] == "arma"){
+      print("Found auto arima")
+      model.typ <- "arima"
+    }
+    if(model.names[a] == "df.residual"){
+      print("Found linear")
+      model.typ <- "linear"
+    }
+  }
+
+  if(missing(fcastFrequency)){
+    fcastFrequency=Setfreq
+  }
+  # xreg="blank"
+  myForecast <- c()
+  if(is.data.frame(xreg)) {
+    if((exists("xreg") && is.data.frame(xreg)) && model.typ == "nnetargs"){
+      print("found nn with xreg")
+      #xreg <- myforecastModel$xreg
+      point.preds <- predict(myforecastModel, data=train, xreg = xreg)
+      myForecast <- as.data.frame(point.preds$mean)
+      names(myForecast)<- c("Forecast")
+    }
+    if(((exists("xreg") && is.data.frame(xreg))) && (model.typ == "arima")){
+      print("found arima with xreg")
+      #xreg <- myforecastModel$xreg
+      point.preds <- predict(myforecastModel, data=train, newxreg = xreg,h=fcastFrequency)
+      myForecast <- as.data.frame(point.preds$pred)
+      myForecast <- myForecast$x
+      names(myForecast)<- c("Forecast")
+    }
+  }
+  if(is.null(xreg)){
+    print("neural net without xreg found")
+    if(model.typ == "linear" || model.typ == "nnetargs"){
+      print(fcastFrequency)
+      print("socomecs model is neural net")
+      point.preds <- predict(myforecastModel, newdata=as.data.frame(x), h=fcastFrequency)
+      myForecast <- as.data.frame(point.preds)
+      names(myForecast)<- c("Forecast")
+      # break()
+    }
+    if(model.typ == "arima"){
+      print("arima without xreg")
+      point.preds <- forecast(myforecastModel,h=fcastFrequency)
+      myForecast <- as.data.frame(point.preds$mean)
+      names(myForecast) <- c("Forecast")
+    }
+  }
+
+  # df <- rbind(df)
+  names <- names(df)
+  output <- data.frame()
+  # names(myforecast) <- c(names)
+  df.ncol <- ncol(df)
+  output <- data.frame(matrix(ncol = df.ncol, nrow =fcastFrequency))
+  x <- c(names)
+  colnames(output) <- c(x)
+  output[col2forecast] <- myForecast
+  output[dateCol] <- future.seq #fill the spatial dimesnion with the future sequence
+
+  if(supplied == 0){
+    output <- list(blackbox, output)
+    names(output) <- c("model", "df")
+    print("First time, returning the best model")
+    return(output)
+  }else{
+    print("No model returned")
+    output <- list(output)
+    names(output) <- c("df")
+    return(output)
+  }
 }
+

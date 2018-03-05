@@ -301,7 +301,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
             caType <- 4
           else if(dfType == "Date")
             caType <- 5
-          else if(dfType == "POSIXlt")
+          else if(dfType == "POSIXlt" || dfType == "POSIXct")
             caType <- 7
         }
 
