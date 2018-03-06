@@ -783,7 +783,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           params[["advancedModelGroup"]] = .caParams[["MODEL_GROUP_NAME"]]
         }
 
-        params[["type"]] <- .caParams[["REQ_TYPE"]]
+        params[["type"]] = .caParams[["REQ_TYPE"]]
         headerParams <- c('X-CA-apiKey' = apiKey)
 
         #Reload datasource
@@ -797,8 +797,8 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           query <- res[["sql"]]
         },
         error = function(err) {
-          print("Error in RELOAD External")
-          msg = paste("Error in RELOAD_EXTERNAL:",err)
+          print("Error in datasource connect info")
+          msg = paste("Error in ExtQuery generation:",err)
           stop(msg)
         })
 

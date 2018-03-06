@@ -763,7 +763,7 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model){
     print("Time series is stationary")
   }
   ##########Build models##########
-  if(missing(supplied_model)){
+  if(missing(supplied_model) || is.null(supplied_model)){
     #linear model
     linear.trend <- tslm(x ~ + trend)
 
