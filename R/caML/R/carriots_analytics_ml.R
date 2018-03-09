@@ -664,10 +664,45 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model){
         last.val.date.hour <- substr(last.val.date, start = 12, stop = 13)
 
         future.seq <- list()
-        if((as.numeric(last.val.date.hour) + fcastFrequency) < 24){
-          future.seq <- seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour,0,0),
-                            ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,fcastFrequency,0,0), "hour")
+        #if((as.numeric(last.val.date.hour) + fcastFrequency) < 24){
+        if(fcastFrequency <=24){
+          last.val.date.hour = as.numeric(last.val.date.hour) + 1
+          #last.val.hour.remaining <- fcastFrequency - 1
+          while ((length(future.seq) < fcastFrequency)) {
+            last.val.hour.remaining <- as.numeric(fcastFrequency - length(future.seq))
+            if(as.numeric(last.val.date.hour) + last.val.hour.remaining > 24){
+
+
+              future.seq <- append(future.seq,(seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour,0,0),
+                                                   ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,23,0,0, tz="EST"), "hour")))
+
+            }else if (last.val.date.hour > last.val.hour.remaining){
+
+              last.val.hour.remaining <- last.val.date.hour + last.val.hour.remaining - 2
+
+              future.seq <- append(future.seq,(seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour,0,0),
+                                                   ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.hour.remaining,0,0, tz="EST"), "hour")))
+            }else{
+
+              last.val.hour.remaining <- as.numeric(fcastFrequency - length(future.seq)) - 1
+              future.seq <- append(future.seq,(seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour,0,0),
+                                                   ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.hour.remaining,0,0, tz="EST"), "hour")))
+            }
+
+            # last.val.date.hour <- as.numeric (substr(future.seq[length(future.seq)], start = 12, stop = 13)) + 1
+            last.val.date.hour <- as.POSIXlt(future.seq[length(future.seq)])$hour
+            if(!is.na(last.val.date.hour) && last.val.date.hour == 00){
+              last.val.date.day <- as.character(as.integer(last.val.date.day)+01)
+              last.val.date.hour <- 1
+            }else{
+              last.val.date.day = substr(future.seq[length(future.seq)], start = 9, stop = 10)
+            }
+
+          }
+
+
         }else{
+          last.val.date.hour = as.numeric(last.val.date.hour) + 1
           while ((length(future.seq) < fcastFrequency)) {
 
             if(fcastFrequency - as.numeric(length(future.seq)) > 24){
@@ -686,19 +721,29 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model){
               }
 
             }else{
+              print("using fcastfrequnecy less than 24 loop")
               last.val.hour.remaining <- as.numeric(fcastFrequency - length(future.seq)) - 1
-
+              #last.val.hour.remaining <- fcastFrequency
               if(last.val.date.hour == 00){
                 last.val.date.day <- as.character(as.integer(last.val.date.day)+01)
                 last.val.date.hour <- 1
               }else{
-                last.val.date.day = substr(future.seq[length(future.seq)], start = 9, stop = 10)
+                if(length(future.seq) == 0){
+                  last.val.date.day <- substr(last.val.date, start = 9, stop = 10)
+                  last.val.date.hour <- as.numeric(substr(last.val.date, start = 12, stop = 13)) + 1
+                  last.val.hour.remaining <- as.numeric(fcastFrequency - length(future.seq))
+
+                }else{
+                  last.val.date.day = substr(future.seq[length(future.seq)], start = 9, stop = 10)
+                }
+
               }
               future.seq <- append(future.seq,(seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour,0,0),
                                                    ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.hour.remaining,0,0, tz="EST"), "hour")))
             }
           }
         }
+
 
       }else{
         col2forecast_agg <- df.pm[[col2forecast]]
@@ -959,4 +1004,5 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model){
     return(output)
   }
 }
+
 
