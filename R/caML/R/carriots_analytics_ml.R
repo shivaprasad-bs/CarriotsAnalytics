@@ -517,6 +517,10 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model){
   #init
   init()
 
+  #df <- df[!df[[dateCol]] =="", ]
+  df <- df[!is.na(df[[dateCol]]),]
+  df <- df[complete.cases(df),]
+
   names(df)
   df.pm <- df
   date.freq <- df.pm[[dateCol]]
@@ -533,7 +537,14 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model){
 
     if((is.character(df.pm[[dateCol]]) | is.factor(df.pm[[dateCol]])) && (is.na(parse_iso_8601(date.freq[1])))){
       print("date came in as character type")
+      # if(is.character(df.pm[[dateCol]])){
       df.pm[[dateCol]] <- as.Date(df.pm[[dateCol]])
+      # }
+      # if(is.factor(df.pm[[dateCol]])){
+      #   df.pm[[dateCol]] <- as.character((df.pm[[dateCol]]))
+      #   df.pm[[dateCol]]
+      # }
+
     }else if(!is.integer( df.pm[[dateCol]]) && !is.na(parse_iso_8601(date.freq[1]))){
       print("ISO, treating it later")
     }else{
@@ -555,72 +566,16 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model){
         col2forecast_agg <- df.pm
         x <- ts(col2forecast_agg[[col2forecast]], frequency = Setfreq) #convert to time series
 
+
         ####future date sequence####
-        last.val <- tail(df[[dateCol]],1)
+        last.val <- as.character(as.Date(tail(df[[dateCol]],1)) + 1)
         last.val.date.yr <- substr(last.val, start = 0, stop = 4)
         last.val.date.month <- substr(last.val, start = 6, stop = 7)
         last.val.date.day <- substr(last.val, start = 9, stop = 10)
         last.val.date.day.future <- as.character(as.integer(last.val.date.day) + fcastFrequency)
 
-        odd.seq <- c(1,3,5,7,9,11)
-        even.seq <- c(4,6,8,10,12)
-
-        if(as.integer(last.val.date.month) %in% odd.seq){
-          print("Its an odd month")
-          end.date <- (paste(last.val.date.yr, last.val.date.month, 31, sep='/')) #create a date from 3 variables
-          future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
-          if(length(future.seq) < fcastFrequency){
-            last.val.date.remaining <- fcastFrequency - length(future.seq)
-            last.val.date.month <- as.character(as.integer(last.val.date.month)+01)
-            end.date <- (paste(last.val.date.yr, last.val.date.month, last.val.date.remaining, sep='/'))
-            future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
-          }
-        }
-        if((as.integer(last.val.date.month) %in% even.seq)){
-          print("Its an odd month")
-          end.date <- (paste(last.val.date.yr, last.val.date.month, 30, sep='/')) #create a date from 3 variables
-          future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
-          if(length(future.seq) < fcastFrequency){
-            last.val.date.remaining <- fcastFrequency - length(future.seq)
-            last.val.date.month <- as.character(as.integer(last.val.date.month)+01)
-            end.date <- (paste(last.val.date.yr, last.val.date.month, last.val.date.remaining, sep='/'))
-            future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
-          }
-        }
-        if(last.val.date.month == "02"){
-
-          print("Its february")
-
-          odd.seq <- c(1,3,5,7,9,11)
-          even.seq <- c(4,6,8,10,12)
-
-          end.date <- (paste(last.val.date.yr, last.val.date.month, 28, sep='/')) #create a date from 3 variables
-          future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
-          while (length(future.seq) < fcastFrequency) {
-            last.val.date.month <- as.character(as.integer(last.val.date.month)+01)
-            if(last.val.date.month  %in% even.seq ){
-              last.val.date.remaining <- fcastFrequency - length(future.seq)
-              if(last.val.date.remaining > 30){
-                end.date <- (paste(last.val.date.yr, last.val.date.month, 30, sep='/'))
-                future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
-              }else{
-                end.date <- (paste(last.val.date.yr, last.val.date.month, last.val.date.remaining, sep='/'))
-                future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
-              }
-            }else{
-              last.val.date.remaining <- fcastFrequency - length(future.seq)
-              if(last.val.date.remaining > 31){
-                end.date <- (paste(last.val.date.yr, last.val.date.month, 31, sep='/'))
-                future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
-              }else{
-                end.date <- (paste(last.val.date.yr, last.val.date.month, last.val.date.remaining, sep='/'))
-                future.seq <- seq(as.Date(last.val), as.Date(end.date), "day") #partial future sequence
-              }
-            }
-          }
-        }else{
-          future.seq <- future.seq
-        }
+        end.date <- as.Date(last.val) + (fcastFrequency-1)
+        future.seq <- seq(as.Date(last.val), as.Date(end.date), "day")
 
       }else{
         print("month is not repeating beyond 12 counts, considering monthly data")
@@ -656,7 +611,7 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model){
         x <- ts(col2forecast_agg$x, frequency = Setfreq) #ts conversion for aggregate case
 
         #future sequence
-        last.val <- tail(df[[dateCol]],1)
+        last.val <- (tail(df[[dateCol]],1))
         last.val.date <- parse_iso_8601(last.val)
         last.val.date.yr <- substr(last.val.date, start = 0, stop = 4)
         last.val.date.month <- substr(last.val.date, start = 6, stop = 7)
@@ -664,85 +619,21 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model){
         last.val.date.hour <- substr(last.val.date, start = 12, stop = 13)
 
         future.seq <- list()
-        #if((as.numeric(last.val.date.hour) + fcastFrequency) < 24){
-        if(fcastFrequency <=24){
-          last.val.date.hour = as.numeric(last.val.date.hour) + 1
-          #last.val.hour.remaining <- fcastFrequency - 1
-          while ((length(future.seq) < fcastFrequency)) {
-            last.val.hour.remaining <- as.numeric(fcastFrequency - length(future.seq))
-            if(as.numeric(last.val.date.hour) + last.val.hour.remaining > 24){
+        last.val.date.hour.next <- as.character(as.numeric(last.val.date.hour)+1)
+        future.hour <- as.character(as.numeric(last.val.date.hour) + 1)
+        fcastFrequency.future.seq <- fcastFrequency - 2
+        till.date <- ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,future.hour,0,0) + hours(fcastFrequency.future.seq)
 
+        #till.date <- till.date + hours(8)
 
-              future.seq <- append(future.seq,(seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour,0,0),
-                                                   ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,23,0,0, tz="EST"), "hour")))
+        #get the to values for ISOdatetime
+        last.val.date.yr.till <- substr(till.date, start = 0, stop = 4)
+        last.val.date.month.till <- substr(till.date, start = 6, stop = 7)
+        last.val.date.day.till <- substr(till.date, start = 9, stop = 10)
+        last.val.date.hour.till <- substr(till.date, start = 12, stop = 13)
 
-            }else if (last.val.date.hour > last.val.hour.remaining){
-
-              last.val.hour.remaining <- last.val.date.hour + last.val.hour.remaining - 2
-
-              future.seq <- append(future.seq,(seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour,0,0),
-                                                   ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.hour.remaining,0,0, tz="EST"), "hour")))
-            }else{
-
-              last.val.hour.remaining <- as.numeric(fcastFrequency - length(future.seq)) - 1
-              future.seq <- append(future.seq,(seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour,0,0),
-                                                   ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.hour.remaining,0,0, tz="EST"), "hour")))
-            }
-
-            # last.val.date.hour <- as.numeric (substr(future.seq[length(future.seq)], start = 12, stop = 13)) + 1
-            last.val.date.hour <- as.POSIXlt(future.seq[length(future.seq)])$hour
-            if(!is.na(last.val.date.hour) && last.val.date.hour == 00){
-              last.val.date.day <- as.character(as.integer(last.val.date.day)+01)
-              last.val.date.hour <- 1
-            }else{
-              last.val.date.day = substr(future.seq[length(future.seq)], start = 9, stop = 10)
-            }
-
-          }
-
-
-        }else{
-          last.val.date.hour = as.numeric(last.val.date.hour) + 1
-          while ((length(future.seq) < fcastFrequency)) {
-
-            if(fcastFrequency - as.numeric(length(future.seq)) > 24){
-              future.seq <- append(future.seq,(seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour,0,0),
-                                                   ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,24,0,0, tz="EST"), "hour")))
-
-              last.val.hour.remaining <- as.numeric(fcastFrequency - length(future.seq)) -1
-
-
-              last.val.date.hour <- substr(future.seq[length(future.seq)], start = 12, stop = 13)
-              if(last.val.date.hour == 00){
-                last.val.date.day <- as.character(as.integer(last.val.date.day)+01)
-                last.val.date.hour <- 1
-              }else{
-                last.val.date.day = substr(future.seq[length(future.seq)], start = 9, stop = 10)
-              }
-
-            }else{
-              print("using fcastfrequnecy less than 24 loop")
-              last.val.hour.remaining <- as.numeric(fcastFrequency - length(future.seq)) - 1
-              #last.val.hour.remaining <- fcastFrequency
-              if(last.val.date.hour == 00){
-                last.val.date.day <- as.character(as.integer(last.val.date.day)+01)
-                last.val.date.hour <- 1
-              }else{
-                if(length(future.seq) == 0){
-                  last.val.date.day <- substr(last.val.date, start = 9, stop = 10)
-                  last.val.date.hour <- as.numeric(substr(last.val.date, start = 12, stop = 13)) + 1
-                  last.val.hour.remaining <- as.numeric(fcastFrequency - length(future.seq))
-
-                }else{
-                  last.val.date.day = substr(future.seq[length(future.seq)], start = 9, stop = 10)
-                }
-
-              }
-              future.seq <- append(future.seq,(seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour,0,0),
-                                                   ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.hour.remaining,0,0, tz="EST"), "hour")))
-            }
-          }
-        }
+        future.seq <- append(future.seq,(seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour.next,0,0),
+                                             ISOdatetime(last.val.date.yr.till,last.val.date.month.till,last.val.date.day.till,last.val.date.hour.till,0,0, tz="EST"), "hour")))
 
 
       }else{
@@ -819,14 +710,34 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model){
       linear.season.rsq <- (linear.season$residuals^2)
       linear.season.n.na <- length(linear.season.rsq)- length(na.omit(linear.season.rsq))
       linear.season.mse <- sum(na.omit(linear.season.rsq))/(length(linear.season.rsq)-linear.season.n.na)
+
+      seasonality.count <- summary(linear.season)$coef[,4] <= .05
+      seasonality.count.len <- length(seasonality.count[seasonality.count==TRUE])
+
       linear.season <- serialize(linear.season,NULL)
     }else{
       linear.season.mse <- NA
       linear.season <-  NA
     }
+    #check how many statistically significant seasonalities exist
 
-    #arima model
-    fit.aa <- auto.arima(x,max.order=9, stepwise = TRUE, xreg = NULL)
+    if(exists("seasonality.count.len") && seasonality.count.len > 10){
+      seasonality.exist=1
+    }else{
+      seasonality.exist=0
+    }
+
+
+    #arima model, not using seasonal arima becasue of the excessive computation time.
+    #If seasonality exisits then arima mse value will be large
+    #this check is based on if the seasonality exists in linear model, it is faster that way
+    if(exists("seasonality.exist") && seasonality.exist == 1){
+      fit.aa <- auto.arima(x,max.order=3, stepwise = TRUE, seasonal = FALSE)
+    }else{
+      fit.aa <- auto.arima(x,max.order=3, stepwise = TRUE, seasonal = FALSE) #if truely seasonality doesnt exist, then this model make sense
+    }
+
+    #fit.aa <- auto.arima(x)
 
     #Neurel net
     fit.nn<- nnetar(x, repeats = 2)
