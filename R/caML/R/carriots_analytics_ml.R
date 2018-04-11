@@ -98,6 +98,8 @@ forecast.ca = function() {
     #Get the target column name
     target <- con$getParam("TARGET_NAME")
 
+    target_label <-  con$getParam("TARGET_LABEL")
+
     #Get temporal dimension
     temporalDim <- con$getParam("TEMPORAL_DIM")
 
@@ -105,7 +107,7 @@ forecast.ca = function() {
     forecastStep <- con$getParam("FORECAST_STEP")
 
     #Actual Forecasting Algorithm
-    output <- autoForecast(df,temporalDim,target,forecastStep,blackboxModel)
+    output <- autoForecast(df,temporalDim,target_label,forecastStep,blackboxModel)
 
     if(is.null(output$df))
       stop("Algorithm Failed to generate the forecasted dataframe")
