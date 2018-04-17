@@ -997,7 +997,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
       # ////////////////////////////////////////////////////////////////////////////////////////////
 
       addModel = function(model = NULL,label = NULL,description=NULL,
-                          predictors = NULL, params = NULL) {
+                          predictors = NULL, params = NULL, metrics = NULL) {
 
         if(is.null(model)) {
           print("No models provided to register")
@@ -1013,6 +1013,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         myModel$model = model
         myModel$predictors = predictors
         myModel$params = params
+        myModel$metrics = metrics
 
         .ca.modelList[[length(.ca.modelList)+1]] <<- myModel
 

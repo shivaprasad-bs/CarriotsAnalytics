@@ -22,7 +22,8 @@ learn.ca = function() {
     modelInfo <- autoClassify(df,target)
 
     #Add the models
-    con$addModel(model = modelInfo$model,label = "autoClassify",description = "Default_AutoClassify_model_from_CA",predictors = modelInfo$predictors)
+    con$addModel(model = modelInfo$model,label = "autoClassify",description = "Default_AutoClassify_model_from_CA"
+                 ,predictors = modelInfo$predictors,metrics = modelInfo$metrics)
   },
   error = function(e) {
     msg = paste(conditionMessage(e), sapply(sys.calls(),function(sc)deparse(sc)[1]), sep="\n   ")
