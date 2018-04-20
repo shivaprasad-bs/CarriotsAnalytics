@@ -412,8 +412,8 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         #get the extra columns added
         extraColumns <- setdiff(newColumns,oldColumns)
 
-        if(!(.caParams$TARGET_NAME %in% extraColumns))
-          stop(paste("TARGET COLUMN is not available in the data frame, missing:",.caParams$TARGET_NAME))
+        if(!(.caParams$TARGET_LABEL %in% extraColumns))
+          stop(paste("TARGET COLUMN is not available in the data frame, missing:",.caParams$TARGET_LABEL))
 
         #intialize the placeholder for new Dims
         if(!exists(".caNewDims"))
@@ -449,14 +449,14 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         myDim[["dataType"]] <- .caParams$TARGET_TYPE
 
         #add this mapping to label2colMap
-        label2Col[[.caParams$TARGET_NAME]] <- dimName
+        label2Col[[.caParams$TARGET_LABEL]] <- dimName
 
         #add the dimension
         .caNewDims[[length(.caNewDims)+1]] <<- myDim
 
         #Remove the target column
         targetColumn <- dimName
-        newColumns <- extraColumns[extraColumns != .caParams$TARGET_NAME]
+        newColumns <- extraColumns[extraColumns != .caParams$TARGET_LABEL]
 
         #prepare the new columns now
         for(val in newColumns) {
@@ -551,8 +551,8 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         #get the extra columns added
         extraColumns <- setdiff(newColumns,oldColumns)
 
-        if(!(.caParams$TARGET_NAME %in% extraColumns))
-          stop(paste("TARGET COLUMN is not available in the data frame, missing:",.caParams$TARGET_NAME))
+        if(!(.caParams$TARGET_LABEL %in% extraColumns))
+          stop(paste("TARGET COLUMN is not available in the data frame, missing:",.caParams$TARGET_LABEL))
 
         #intialize the placeholder for new Dims
         if(!exists(".caNewDims"))
@@ -593,13 +593,13 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         targetColumn <- dimName
 
         #add this mapping to label2colMap
-        label2Col[[.caParams$TARGET_NAME]] <- dimName
+        label2Col[[.caParams$TARGET_LABEL]] <- dimName
 
         #add the dimension
         .caNewDims[[length(.caNewDims)+1]] <<- myDim
 
         #Remove the target column
-        newColumns <- extraColumns[extraColumns != .caParams$TARGET_NAME]
+        newColumns <- extraColumns[extraColumns != .caParams$TARGET_LABEL]
 
         #prepare the new columns now
         for(val in newColumns) {
