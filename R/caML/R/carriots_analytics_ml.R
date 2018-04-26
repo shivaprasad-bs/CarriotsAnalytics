@@ -519,6 +519,9 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
 ########### OUT of the box Forecast algorithm ##################
 autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model,cardinaldim){
 
+  #init
+  init()
+
   class.df.char <- class(df[[dateCol]])
   if(class.df.char == "character"){
     df <- df[!df[[dateCol]] =="", ]
