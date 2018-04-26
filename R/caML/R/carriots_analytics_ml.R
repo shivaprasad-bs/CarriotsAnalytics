@@ -519,9 +519,6 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
 ########### OUT of the box Forecast algorithm ##################
 autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model,cardinaldim){
 
-  #init
-  init()
-
   class.df.char <- class(df[[dateCol]])
   if(class.df.char == "character"){
     df <- df[!df[[dateCol]] =="", ]
@@ -805,8 +802,8 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model,c
       #evaluate model accuracy
 
       #linear trend model
-      linear.trend.mse <- forecast::accuracy(linear.trend)
-      linear.trend.mse <- linear.trend.mse[,6]
+      linear.trend.metrics <- forecast::accuracy(linear.trend)
+      linear.trend.mse <- linear.trend.metrics[,6]
       # linear.trend.rsq <- (linear.trend$residuals^2)
       # linear.trend.n.na <- length(linear.trend.rsq)- length(na.omit(linear.trend.rsq))
       # linear.trend.mse <- sum(na.omit(linear.trend.rsq))/(length(linear.trend.rsq)-linear.trend.n.na)
@@ -814,15 +811,30 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model,c
       #linear seasonality is conditional on Setfreq object, see above
 
       #arima
-      aa.mse <- forecast::accuracy(fit.aa)
-      aa.mse <- aa.mse[,6]
+      aa.metrics <- forecast::accuracy(fit.aa)
+      aa.mse <- aa.metrics[,6]
+
       # aa.rsq <- (fit.aa$residuals^2)
       # aa.n.na <- length(aa.rsq)- length(na.omit(aa.rsq))
       # aa.mse <- sum(na.omit(aa.rsq))/(length(aa.rsq)-aa.n.na)
 
       # neural net
-      nn.mse <- forecast::accuracy(fit.nn)
-      nn.mse <- nn.mse[,6]
+      nn.metrics <- forecast::accuracy(fit.nn)
+      nn.mse <- nn.metrics[,6]
+      if(is.nan(linear.trend.mse) || is.nan(aa.mse) || is.nan(nn.mse)){
+        linear.trend.metrics<- forecast::accuracy(linear.trend)
+        aa.metrics <- forecast::accuracy(fit.aa)
+        nn.metrics <- forecast::accuracy(fit.nn)
+        linear.trend.mse <- linear.trend.metrics[,2]
+        aa.mse <- aa.metrics[,2]
+        nn.mse <- nn.metrics[,2]
+
+        metric.rmse = 1
+
+      }else{
+        metric.rmse = 0
+      }
+
       # nn.rsq <- (fit.nn$residuals^2)
       # nn.n.na <- length(nn.rsq)- length(na.omit(nn.rsq))
       # nn.mse <- sum(na.omit(nn.rsq))/(length(nn.rsq)-nn.n.na)
@@ -943,9 +955,16 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model,c
     if(is.null(xreg)){
       print("neural net without xreg found")
       if(model.typ == "linear" || model.typ == "nnetargs"){
-        print(fcastFrequency)
-        print("socomecs model is neural net")
-        point.preds <- forecast(myforecastModel, newdata=as.data.frame(x), h=fcastFrequency)
+        #print(fcastFrequency)
+        print("socomecs model could be linear or neural net")
+        if(model.typ == "linear"){
+          point.preds <- forecast(myforecastModel,h=fcastFrequency)
+          print("Its linear")
+        }else{
+          point.preds <- forecast(myforecastModel,h=fcastFrequency)
+          print("Its neural net")
+        }
+
         myForecast <- as.data.frame(point.preds)
         names(myForecast)<- c("Forecast")
         # break()
@@ -1006,7 +1025,13 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model,c
   # names(myforecast) <- c(names)
   models.accuracy.metrics <- data.frame(matrix(ncol = 3, nrow =4))
   names(models.accuracy.metrics) <- c("model_name", "metric_name", "metric_value")
-  metric_name <- c("Mean Abs Squared Error")
+
+  if(metric.rmse == 1){
+    metric_name <- c("Root Mean Squared Error")
+  }else{
+    metric_name <- c("Mean Abs Squared Error")
+  }
+
   model_name <- c("Linear Seasonality","Linear Trend","Auto ARIMA","Neurelnet")
   metric_value <- c(linear.season.mse, linear.trend.mse ,aa.mse,nn.mse)
   models.accuracy.metrics$model_name <- model_name
