@@ -1122,17 +1122,39 @@ load.ca = function(conn = NULL, columns = NULL) {
 #'
 #'  @param conn - BAConnection object obtained from connect API
 #'  @param dataframe - DataFrame for where Clause
-#'  @param colname -  colname in dataframe which is to be added in to table
-#'  @param type - Data type of column, supports specific types  available in the conn$dataTypes list
+#'  @param model_name - Name of the model by running which the dataframe has been created(required in case of score/forecast)
+#'  @param model_label - Label of the model by running which the dataframe has been created(required in case of score/forecast)
 #'
 #'@export
 update.ca = function(conn = NULL,
                      dataframe = NULL,
-                     colname = NULL,
-                     type = NULL) {
+                     model_name = NULL,
+                     model_label = NULL) {
   conn$update(df = dataframe,
               colName = colname,
-              type = type)
+              modelName = model_name,
+              modelLabel = model_label)
+}
+
+
+#################################################################################
+#' Method to the forecast/learn models
+#'
+#' Serializes and add the models in the CA database for future use
+#'
+#'  @param conn - BAConnection object obtained from connect API
+#'  @param model - model object which wants to be stored for future use
+#'  @param label - label for the model
+#'  @param description - short description about the model
+#'  @param params - model specific parameters to set for future execution
+#'  @param metrics - A dataFrame with metrics about the internal forecast/learn model that can be displayed to the user
+#'
+#'@export
+addModel.ca = function(conn = NULL,
+                     model = NULL,label = NULL,description=NULL,
+                     predictors = NULL, params = NULL, metrics = NULL) {
+  conn$addModel(model = model,label = label,description=description,
+                predictors = predictors, params = params, metrics = metrics)
 }
 
 ##################################################################################
