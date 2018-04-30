@@ -722,7 +722,10 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
             if(exists(".caParams")) {
               #For learn/forecast selected columns in the dialog is the predictor names
               if(.caParams[["REQ_TYPE"]] == "LEARN" || .caParams[["REQ_TYPE"]] == "FORECAST") {
-                columns <- .caParams[["predictors"]]
+                if(.caParams[["REQ_TYPE"]] == "FORECAST")
+                  columns <- .caParams[["CARDINAL_DIMS"]]
+                else
+                  columns <- .caParams[["predictors"]]
 
                 # check whether forecast and temporal dims there in the selection list,
                 #if not add it
