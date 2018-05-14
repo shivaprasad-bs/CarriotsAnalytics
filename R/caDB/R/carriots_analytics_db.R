@@ -269,15 +269,15 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           for (i in 1:nrow(colInfo)) {
             row <- colInfo[i, ]
             if(as.character(row$field.type) == 'int') {
-              df[[as.character(row$field.name)]] = as.integer(as.character(df[[as.character(row$field.name)]]))
+              df[[row$field.name]] = as.integer(df[[row$field.name]])
             }
             else if(as.character(row$field.type) == 'date') {
               # works for default format of %Y-%m-%d and typeof() will return double
               #though class() will return the Date'
-              df[[as.character(row$field.name)]] = as.Date(as.character(df[[as.character(row$field.name)]]))
+              df[[row$field.name]] = as.Date(as.character(df[[row$field.name]]))
             }
             else if(as.character(row$field.type) == 'timestamp') {
-              df[[as.character(row$field.name)]] = as.POSIXlt(df[[as.character(row$field.name)]],tz = "GMT")
+              df[[row$field.name]] = as.POSIXct(df[[row$field.name]],tz = "GMT")
             }
           }
         }
@@ -291,7 +291,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         if(!is.null(type)) {
           dfType <- type
 
-          #In cas of POSIXlt
+          #In cas of POSIXct
           if(length(type) > 1)
             dfType <- type[[1]]
 
@@ -943,8 +943,9 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
             # get the name to label mapping
             col2Label <- getColumn2Label(label2Col)
 
-            #insert mapping only for the predictors selected
-            predictors <- .caParams$predictors
+            #insert mapping only for the cardinal dims, temporal, forecasted dims selected
+            #here predictors is a collection of above 3
+            predictors <- .caParams$CARDINAL_DIMS
 
             temporal <- .caParams$TEMPORAL_DIM
 
