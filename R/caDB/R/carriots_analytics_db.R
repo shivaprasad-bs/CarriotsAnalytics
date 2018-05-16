@@ -267,11 +267,16 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
 
         label2Col <- private$conn_data$columns
         col2label <- getColumn2Label(label2Col)
+        print(col2label)
         if(!is.null(colInfo)) {
           for (i in 1:nrow(colInfo)) {
             row <- colInfo[i, ]
+            # there actual type is factors with multiple levels, cast it to single string
             col_name <- as.character(row$field.name)
             col_type <- as.character(row$field.type)
+
+            #trim enclosed quotes, as quotes will be appended if header has space
+            col_name <- gsub("^\"|\"$","",col_name)
             col_label <- col2label[[col_name]]
 
             if( col_type == 'int') {
@@ -283,7 +288,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
               df[[col_label]] = as.Date(as.character(df[[col_label]]))
             }
             else if(col_type == 'timestamp') {
-              df[[col_label]] = as.POSIXlt(df[[col_label]],tz = "GMT")
+              df[[col_label]] = as.POSIXct(df[[col_label]],tz = "GMT")
             }
           }
         }
