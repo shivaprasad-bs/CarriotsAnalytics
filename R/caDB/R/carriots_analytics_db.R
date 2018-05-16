@@ -265,19 +265,25 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           stop(msg)
         })
 
+        label2Col <- private$conn_data$columns
+        col2label <- getColumn2Label(label2Col)
         if(!is.null(colInfo)) {
           for (i in 1:nrow(colInfo)) {
             row <- colInfo[i, ]
-            if(as.character(row$field.type) == 'int') {
-              df[[row$field.name]] = as.integer(df[[row$field.name]])
+            col_name <- as.character(row$field.name)
+            col_type <- as.character(row$field.type)
+            col_label <- col2label[[col_name]]
+
+            if( col_type == 'int') {
+              df[[col_label]] = as.integer(df[[col_label]])
             }
-            else if(as.character(row$field.type) == 'date') {
+            else if(col_type == 'date') {
               # works for default format of %Y-%m-%d and typeof() will return double
               #though class() will return the Date'
-              df[[row$field.name]] = as.Date(as.character(df[[row$field.name]]))
+              df[[col_label]] = as.Date(as.character(df[[col_label]]))
             }
-            else if(as.character(row$field.type) == 'timestamp') {
-              df[[row$field.name]] = as.POSIXct(df[[row$field.name]],tz = "GMT")
+            else if(col_type == 'timestamp') {
+              df[[col_label]] = as.POSIXlt(df[[col_label]],tz = "GMT")
             }
           }
         }
