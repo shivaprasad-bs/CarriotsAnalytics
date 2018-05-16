@@ -266,8 +266,10 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         })
 
         label2Col <- private$conn_data$columns
+
+        #get the column to label map
         col2label <- getColumn2Label(label2Col)
-        print(col2label)
+
         if(!is.null(colInfo)) {
           for (i in 1:nrow(colInfo)) {
             row <- colInfo[i, ]
@@ -277,6 +279,8 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
 
             #trim enclosed quotes, as quotes will be appended if header has space
             col_name <- gsub("^\"|\"$","",col_name)
+
+            #get the label name from the coumn name
             col_label <- col2label[[col_name]]
 
             if( col_type == 'int') {
