@@ -477,7 +477,7 @@ autoClassify <- function(df, col2bclassified) {
   dat.typ <- capture.output(str(df))
 
   #Put underscore for column names with spaces
-  names(df) <- gsub(" ", "_", names(df))
+  #names(df) <- gsub(" ", "_", names(df))
 
   column.names <- names(df)
   df.orig <- df # saving the original data frame
@@ -689,7 +689,7 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
   dat.typ <- capture.output(str(df))
 
   #Put underscore for column names with spaces
-  names(df) <- gsub(" ", "_", names(df))
+  #names(df) <- gsub(" ", "_", names(df))
 
   column.names <- names(df)
   df.orig <- df # saving the original data frame
