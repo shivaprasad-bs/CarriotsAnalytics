@@ -1,3 +1,10 @@
+#SOME ENUMS for different date/datetime formats
+CA_NON_DATE = 0
+CA_STRING_DATE = 1
+CA_STRING_DATE_TIME = 2
+CA_STRING_DATE_YYYY_MM = 3
+CA_POSIXct = 9
+
 ##################################################################################
 #' Default LEARN mechanism of CA datasources
 #'
@@ -104,14 +111,14 @@ forecast.ca = function() {
     #Get temporal dimension
     temporalDim <- con$getParam("TEMPORAL_DIM")
 
-    #Get forecast step
-    forecastStep <- con$getParam("FORECAST_STEP")
+    #Get forecast steps
+    forecastSteps <- con$getParam("FORECAST_STEP")
 
     #Get cardinal dims
     cardinalDims <- con$getParam("CARDINAL_DIMS")
 
     #Actual Forecasting Algorithm
-    output <- autoForecast(df,temporalDim,target_label,forecastStep,blackboxModel,cardinalDims)
+    output <- autoForecastHelper(df = df,temporalDim,target_label,forecastSteps,blackboxModel,cardinalDims)
 
     if(is.null(output$df))
       stop("Algorithm Failed to generate the forecasted dataframe")
@@ -142,6 +149,279 @@ forecast.ca = function() {
     stop(msg)
   })
 }
+
+#######################################################################################################
+#   Helper function to do some prerequsites before running the autoforecasting algorithm
+#
+#1. First step is to convert the user selected temporalDim to POSIXct, errors out
+#in case not able to convert to POSIXct
+#2. Process the cardinalDims - recursively runs the forecasting algorithm with a dataframe having an unique
+# cardinalDim filter applied, then obtains the resultant forcasted dataframe and model and merges it to final
+# dataframe and modelsList
+#3.Process back the temporalDim to its original types
+##########################################################################################################
+
+autoForecastHelper = function(df=NULL,temporalDim = NULL,target = NULL,forecastSteps = NULL,
+                              blackboxModel = NULL, cardinalDims = NULL) {
+  #process Temporal dim
+  resp = processTemporalDim(df=df,temporalDim = temporalDim)
+
+  df <- resp$df
+  caType <- resp$caType
+
+  print(caType)
+
+  #process cardinal dims and filter the dataframe, run the autoForecast using filtered DF
+  output = processCardinalDimsAndForecast(df,temporalDim,target,forecastSteps,blackboxModel,cardinalDims)
+
+  #processForecasted values
+  output$df = processForecastedValues(output$df,temporalDim,caType)
+
+  output
+}
+
+#########################################################################################################
+# Function will run the autoforecast based on cardinalDim
+#
+#1. Gets the unique values for cardinal dims
+#2. Applies the above values as a filter on the actual dataframe and gets the filtered DF
+#3. Runs the autoforecast using, obtains the forecasted values and model(if existing model is available
+# passed the existing model to autoforecast) and saves it to the final Df and final modelList
+#4.Returns the final modelList and final df(with all the merged results)
+
+processCardinalDimsAndForecast = function(df=NULL,temporalDim = NULL,target = NULL,forecastSteps = NULL,
+                              blackboxModel = NULL, cardinalDims = NULL) {
+
+  #check whether cardinalDims exists
+  if(!is.null(cardinalDims)) {
+
+    df_final <- NULL
+
+    updateModel <- FALSE
+    isModelAvailable <- FALSE
+
+    if(!is.null(blackboxModel)) {
+      isModelAvailable <- TRUE
+    }else
+      blackboxModel <- list()
+
+    # Do group by on the cardinalDims
+    df_distinct<- dplyr::distinct(dplyr::select(df,cardinalDims))
+    final_metrics <- NULL
+
+    for(i in 1:nrow(df_distinct)) {
+      isSubModelAvailable <- FALSE
+      row <- df_distinct[i,]
+      #model identifier in the modelList
+      modelStr <- paste(row,collapse = "_")
+
+      subModel <- NULL
+      if(isModelAvailable) {
+          subModel <- blackboxModel[[modelStr]]
+          if(!is.null(subModel))
+            isSubModelAvailable <- TRUE
+      }
+      #hack to conver the single valued row to dataframe(which includes header info as well)
+      if(length(row) == 1)  {
+        temp <- list()
+        temp[[colnames(df_distinct)]] = row
+        row <- as.data.frame(temp)
+      }
+
+      selectCols <- c(temporalDim,target)
+      df_agg <- getFilteredDf(df = df,cardinalFilter = row, selectCols = selectCols)
+
+      #hack for autoForecast to work - needs to be removed
+      #df_agg[[temporalDim]] <- as.POSIXlt(df_agg[[temporalDim]])
+
+      #Now call the actual autoforecast with this new dataframe
+      #Passing cardinal dims as null, as it is erroring out
+      output <- autoForecast(df_agg,temporalDim,target,forecastSteps,subModel)
+
+      #Merge cardinal dim columns to DF
+      if(is.null(output$df))
+        stop("No values have been forecasted, exiting here")
+      else {
+        output$df <- mergeCardinalColumns(df = output$df,cardinalFilter = row)
+      }
+
+      #append the results to final dataframe
+      if(is.null(df_final)) {
+        df_final <- output$df
+      }else {
+        df_final <- unique(rbind(df_final,output$df))
+      }
+
+      #Add the newly added model to modelList
+      if(!isSubModelAvailable) {
+          updateModel <- TRUE
+          blackboxModel[[modelStr]] <- output$model
+          final_metrics <- mergeAccuracyMetrics(final_metrics,output$accuracy_metrics,row)
+      }
+    }
+
+    if(updateModel) {
+      output <- list()
+      output[["model"]] <- blackboxModel
+      output[["accuracy_metrics"]] <- final_metrics
+    }
+    else {
+      output[["model"]] <- NULL
+      output[["accuracy_metrics"]] <- NULL
+    }
+
+    #Merged dataframe
+    output[["df"]] <- df_final
+
+  } else {
+
+    #If there is no cardinal dims selected call the autoforecast directly
+    output <- autoForecast(df,temporalDim,target,forecastSteps,blackboxModel)
+    if(!is.null(blackboxModel)) {
+      #Black box model available, so ignore the returned model
+      output$model <- NULL
+      output$accuracy_metrics <- NULL
+    }
+  }
+
+  output
+}
+
+mergeCardinalColumns <- function(df = NULL, cardinalFilter = NULL) {
+  if(!is.null(cardinalFilter)) {
+    if(!is.null(df)) {
+      #Append the cardinal dims values as additional columns
+      for(i in 1:ncol(cardinalFilter)) {
+        df[[colnames(cardinalFilter[i])]] <- rep(cardinalFilter[[i]],each=nrow(df))
+      }
+    }
+  }
+
+  df
+}
+
+mergeAccuracyMetrics <- function(finalMetrics,currentMetrics,cardinalFilter) {
+
+  if(!is.null(currentMetrics)) {
+    #Append the cardinal dims values as additional columns
+    for(i in 1:ncol(cardinalFilter)) {
+      currentMetrics[[colnames(cardinalFilter[i])]] <- rep(cardinalFilter[[i]],each=nrow(currentMetrics))
+    }
+  }
+
+  if(is.null(finalMetrics))
+    finalMetrics <- currentMetrics
+  else {
+    finalMetrics <- unique(rbind(finalMetrics,currentMetrics))
+  }
+
+  finalMetrics
+
+}
+
+getFilteredDf <- function(df = NULL, cardinalFilter = NULL, selectCols = NULL) {
+
+  filterStr <- ""
+
+  #prepare a filter string for cardinal dims
+  for(i in 1:ncol(cardinalFilter)) {
+    if(nchar(filterStr) > 0) filterStr <- paste(filterStr," & ")
+    filterStr <- paste(filterStr,paste(colnames(cardinalFilter[i]),paste("'",cardinalFilter[[i]],"'",sep = ""),sep = " == "),sep="")
+  }
+
+  #build a dataframe filtered on the cardinal dims
+  # df_agg <- filter(
+  #   summarise(
+  #     select(group_by_at(df,vars(one_of(select_cols)))
+  #            ,columns
+  #     ),
+  #     caReplace = sum(!!as.name(target))
+  #   ),
+  #   !!!rlang::parse_expr(filterStr)
+  # )
+
+  #just filtering is enough, because query is already doing  aggregation and group by
+  print(filterStr)
+  df_agg <- dplyr::select(dplyr::filter(df,!!!rlang::parse_expr(filterStr)),selectCols)
+
+  df_agg
+
+}
+
+processTemporalDim = function(df=NULL,temporalDim=NULL) {
+
+  #Response
+  resp <- list()
+
+  #Get the original type
+  type <- class(df[[temporalDim]])
+  caType <- CA_POSIXct
+
+  #Incase of POSIXlt and POSIXct, class will return a list with 2 values - we have to pick first value of it
+  if(length(type) > 1)
+    type <- type[1]
+
+  #if temporalDim already a POSIXlt, then just return it
+  if(type == "POSIXct")
+    print("TemporalDim is in POSIXct, not changing anything")
+  #Date can be directly converted in to POSIXct
+  else if(type == "Date")
+    df[[temporalDim]] <- as.POSIXct(df[[temporalDim]])
+  #Other formats like numeric,integer, string has to be handled here
+  else {
+    caType <- findIsStringDate(df[[temporalDim]])
+    #this should appropriately cast numeric/integer/ string
+    temp <- as.POSIXct(parsedate::parse_iso_8601(df[[temporalDim]]))
+    if(all(is.na(temp)))
+      stop("Unable to cast the temporal dim to Date/DateTime, Exiting here !!!")
+    else
+      df[[temporalDim]] <- temp
+  }
+
+  resp[["df"]] <- df
+  resp[["caType"]] <- caType
+
+  resp
+}
+
+findIsStringDate = function(vals) {
+
+  caType <- CA_NON_DATE
+  nonNAIndex <- min(which(!is.na(vals)))
+  valToTest <- vals[nonNAIndex]
+
+  if(is.character(valToTest)) {
+    if(IsDate(valToTest))
+      caType <- CA_STRING_DATE
+    else if(IsDateTime(valToTest))
+      caType <- CA_STRING_DATE_TIME
+  }
+
+  caType
+}
+
+IsDate <- function(mydate, date.format = "%Y-%m-%d") {
+  tryCatch(!is.na(as.Date(mydate, date.format)),
+           error = function(err) {FALSE})
+}
+
+IsDateTime <- function(mydate, date.format = "%Y-%m-%d %H:%M:%S") {
+  tryCatch(!is.na(as.POSIXct(mydate, format = date.format)),
+           error = function(err) {FALSE})
+}
+
+processForecastedValues = function(df,temporalDim,caType) {
+  #If it is non- date/dateTime format, get only 'year' part from POSIXlt
+  if(!is.null(df)) {
+    #pick only year part if it is not date
+    if(caType == CA_NON_DATE)
+      df[[temporalDim]] <- lubridate::year(df[[temporalDim]])
+  }
+
+  df
+}
+
+
 
 init <- function() {
   library(data.table)
@@ -182,6 +462,8 @@ init <- function() {
   library(party)
   require(stringr)
   library(parsedate)
+  library(dplyr)
+  library(rlang)
 }
 
 autoClassify <- function(df, col2bclassified) {

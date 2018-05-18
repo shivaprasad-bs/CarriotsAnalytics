@@ -39,6 +39,8 @@ Imports:
 		party(>= 1.2-4),
 		stringr(>= 1.3.0),
 		parsedate(>= 1.1.3),
+		dplyr(>= 0.7.4),
+		rlang(>= 0.1.6),
 		R.utils(>= 2.6.0),
 		data.table(>= 1.10.4-3)
 License: What license is it under?
