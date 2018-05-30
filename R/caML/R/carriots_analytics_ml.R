@@ -14,7 +14,7 @@ CA_POSIXct = 9
 learn.ca = function() {
   withCallingHandlers({
     #connect to CA
-    con <- caDB::connect.ca()
+    con <- caDB:connect.ca()
 
     #Load data
     df <- con$load()
@@ -371,6 +371,7 @@ processTemporalDim = function(df=NULL,temporalDim=NULL) {
   else {
     caType <- findIsStringDate(df[[temporalDim]])
     #this should appropriately cast numeric/integer/ string
+    print("entering non - date time")
     temp <- as.POSIXct(parsedate::parse_iso_8601(df[[temporalDim]]))
     if(all(is.na(temp)))
       stop("Unable to cast the temporal dim to Date/DateTime, Exiting here !!!")
@@ -799,532 +800,636 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
 }
 
 ########### OUT of the box Forecast algorithm ##################
-autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model,cardinaldim){
-
+autoForecast <- function (df,temporalDim,columnToForecast,fcastFrequency,supplied_model){
   #init
   init()
 
-  class.df.char <- class(df[[dateCol]])
-  if(class.df.char == "character"){
-    df <- df[!df[[dateCol]] =="", ]
-  }
-
-  df <- df[!is.na(df[[dateCol]]),]
+  # df <- processtemporal_dim(df, temporalDim);
+  df <- df[!is.na(df[[temporalDim]]),]
   #df <- df[complete.cases(df),]
   df <- na.omit(df)
 
-  names(df)
-  df.pm <- df
-  date.freq <- df.pm[[dateCol]]
+  freqNumber <- computeTemporalFreq(df,temporalDim)
 
-  date.class <- class(date.freq[1])
-  if((date.class == "POSIXct" || date.class == "POSIXt" || date.class == "POSIXlt") && (!is.integer(df.pm[[dateCol]]))){
-    carriots_iot_format = 1
-    print("Carriots iot format found")
+  futureSeq <- futureTemporalDim(df, temporalDim, freqNumber, fcastFrequency)
+
+  forecasting(df, temporalDim, futureSeq, columnToForecast, supplied_model, fcastFrequency, freqNumber);
+}
+
+# processtemporal_dim <- function(df, temporaldim){
+#
+#
+#   return(df)
+# }
+
+
+computeTemporalFreq <- function(df,temporalDim) {
+
+  temoralDimContent <- df[[temporalDim]]
+
+  if(length(unique(hour(df[[temporalDim]]))) > 10){
+    print("hourly data")
+    freqNumber <- 8766
+  }else if(length(unique(minute(df[[temporalDim]]))) > 10){
+    print("minute level data")
+    freqNumber <- 1440
+  }else if(length(unique(second(df[[temporalDim]]))) > 10){
+    print("seconds level data")
+    freqNumber <- 60
+  }else if(length(unique(day(df[[temporalDim]]))) > 10){
+    print("daily data")
+    freqNumber <- 365.25
+  }else if(length(unique(month(df[[temporalDim]]))) > 10){
+    print("monthly data")
+    freqNumber <- 12
   }else{
-    carriots_iot_format = 0
+    print("yearly data")
+    freqNumber <- 1
   }
-
-  if(!is.integer(df.pm[[dateCol]])){
-    if(!is.na(str_count(date.freq[1],"\\-")) && str_count(date.freq[1],"\\-") > 0){
-      print("dashes")
-      count.dash <- str_count(date.freq[1],"\\-")
-    }else if((str_count(date.freq[1],"/")) > 0){
-      print("Slashes")
-      count.dash <- str_count(date.freq[1],"/")
-    }
-    colon.exist <- str_count(date.freq[1],"\\:")
+  return(freqNumber)
+}
 
 
-    if((is.character(df.pm[[dateCol]]) || is.factor(df.pm[[dateCol]])) && (is.na(parse_iso_8601(date.freq[1])))){
-      print("date came in as character type")
-      # if(is.character(df.pm[[dateCol]])){
-      df.pm[[dateCol]] <- as.Date(df.pm[[dateCol]])
+aggregateForecastColumn <- function(df, columnToForecast, freqNumber,temporalDim){
 
-    }else if(!is.integer( df.pm[[dateCol]]) && !is.na(parse_iso_8601(date.freq[1]))){
-      print("ISO, treating it later")
-    }else{
-      print("Date better be 4 digit year")
-    }
-  }
-
-  l<-0
-  if(exists("count.dash")  && count.dash == 1){
-    print("Just year or year-month format")
-    Setfreq=12
-    break()
-  }else if(exists("count.dash") && count.dash == 2 && colon.exist == 0){
-    for(k in 1:13){
-      month <- substr(df.pm[[dateCol]], start = 6, stop = 7)
-      if(month[k] == month[k]){
-        print("month is repeating beyond 12 counts, considering daily data")
-        Setfreq=365
-        col2forecast_agg <- df.pm
-        x <- ts(col2forecast_agg[[col2forecast]], frequency = Setfreq) #convert to time series
-
-
-        ####future date sequence####
-        last.val <- as.character(as.Date(tail(df[[dateCol]],1)) + 1)
-        last.val.date.yr <- substr(last.val, start = 0, stop = 4)
-        last.val.date.month <- substr(last.val, start = 6, stop = 7)
-        last.val.date.day <- substr(last.val, start = 9, stop = 10)
-        last.val.date.day.future <- as.character(as.integer(last.val.date.day) + fcastFrequency)
-
-        end.date <- as.Date(last.val) + (fcastFrequency-1)
-        future.seq <- seq(as.Date(last.val), as.Date(end.date), "day")
-
-      }else{
-        print("month is not repeating beyond 12 counts, considering monthly data")
-        Setfreq=12
-        col2forecast_agg <- df.pm
-        x <- ts(col2forecast_agg[[col2forecast]], frequency = Setfreq) #convert to time series
-        break()
-      }
-    }
+  if(freqNumber == 8766){
+    dfWithAggregatedColumn <- aggregate(df[[columnToForecast]],list(hour=cut(as.POSIXct(df[[temporalDim]]), "hour")),mean)
+  }else if(freqNumber == 1440){
+    fWithAggregatedColumn <- aggregate(df[[columnToForecast]],list(hour=cut(as.POSIXct(df[[temporalDim]]), "minute")),mean)
+  }else if(freqNumber == 60){
+    dfWithAggregatedColumn <- aggregate(df[[columnToForecast]],list(temp_dim=cut(as.POSIXct(df[[temporalDim]]), "sec")),mean)
+  }else if(freqNumber == 365.25){
+    dfWithAggregatedColumn <- aggregate(df[[columnToForecast]],list(temp_dim=cut(as.Date(df[[temporalDim]]), "day")),mean)
+  }else if(freqNumber == 12){
+    dfWithAggregatedColumn <- aggregate(df[[columnToForecast]],list(temp_dim=cut(as.Date(df[[temporalDim]]), "month")),mean)
   }else{
-    Setfreq=8766
-    #check for ISO 8601
-    if((is.null(parse_iso_8601(date.freq[1])) == FALSE && !is.integer(df.pm[[dateCol]])) || (carriots_iot_format == 1)){
-      print("Date is ISO 8601")
-      # df.pm$date <- as.POSIXct(df.pm[[dateCol]],format="%Y-%m-%d%H:%M")
-      #df.pm$date <- as.character(format_iso_8601(df.pm[[dateCol]]))
-      if(carriots_iot_format == 1){
-        df[[dateCol]] <- format_iso_8601(df[[dateCol]])
-      }
-
-      l=0
-      for(k in 1:10){
-        dailydata <- strsplit(df[[dateCol]], "T")
-        time.stamp <- dailydata[[1]][2]
-        hour <- substr(time.stamp, start = 1, stop = 2)
-        if(isTRUE(hour == hour)){
-          print("hour is repeating, need mean aggregation")
-          l = l+1
-        }
-      }
-      if(l > 2){
-        df.pm$date <- as.POSIXct(df.pm[[dateCol]],format="%Y-%m-%dT%H:%M")
-        print("Aggregation done")
-        col2forecast_agg <- aggregate(df.pm[[col2forecast]],list(hour=cut(as.POSIXct(df.pm$date), "hour")),mean)
-        date.first.element <- as.Date(col2forecast_agg$hour[1])
-        year <- format(as.Date(date.first.element, format="%m/%d/%Y"),"%Y") #need for ts frequency
-        month <- format(as.Date(date.first.element, format="%m/%d/%Y"),"%m") #need for ts frequency
-        x <- ts(col2forecast_agg$x, frequency = Setfreq) #ts conversion for aggregate case
-
-        #future sequence
-        last.val <- (tail(df[[dateCol]],1))
-        last.val.date <- parse_iso_8601(last.val)
-        last.val.date.yr <- substr(last.val.date, start = 0, stop = 4)
-        last.val.date.month <- substr(last.val.date, start = 6, stop = 7)
-        last.val.date.day <- substr(last.val.date, start = 9, stop = 10)
-        last.val.date.hour <- substr(last.val.date, start = 12, stop = 13)
-
-        future.seq <- list()
-        last.val.date.hour.next <- as.character(as.numeric(last.val.date.hour)+1)
-        future.hour <- as.character(as.numeric(last.val.date.hour) + 1)
-        fcastFrequency.future.seq <- fcastFrequency - 1
-        till.date <- ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,future.hour,0,0) + hours(fcastFrequency.future.seq)
-
-        #till.date <- till.date + hours(8)
-
-        #get the to values for ISOdatetime
-        last.val.date.yr.till <- substr(till.date, start = 0, stop = 4)
-        last.val.date.month.till <- substr(till.date, start = 6, stop = 7)
-        last.val.date.day.till <- substr(till.date, start = 9, stop = 10)
-        last.val.date.hour.till <- substr(till.date, start = 12, stop = 13)
-
-        future.seq <- append(future.seq,(seq(ISOdatetime(last.val.date.yr,last.val.date.month,last.val.date.day,last.val.date.hour.next,0,0),
-                                             ISOdatetime(last.val.date.yr.till,last.val.date.month.till,last.val.date.day.till,last.val.date.hour.till,0,0, tz=""), "hour")))
-        if(carriots_iot_format == 0){
-          future.seq <- format_iso_8601(future.seq)
-        }
-
-
-      }else{
-        col2forecast_agg <- df.pm[[col2forecast]]
-        print("Non ISO")
-        year <- year(as.Date(col2forecast_agg[[dateCol]][1], format = "%m/%d/%Y"))
-        month <- month(as.Date(col2forecast_agg[[dateCol]][1], format = "%m/%d/%Y"))
-        x <- ts(col2forecast_agg[[col2forecast]], frequency = Setfreq) #convert to time series
-      }
-    }
+    dfWithAggregatedColumn <- aggregate(df[[columnToForecast]],list(temp_dim=cut(as.Date(df[[temporalDim]]), "year")),mean)
   }
 
-  ##year has just 4 digit year coming as integer
-  if(is.integer(df.pm[[dateCol]])){
-    dateCol.diff <- df.pm[[dateCol]][1] - (df.pm[[dateCol]][2]) #df.pm[[dateCol]] changes in line 43, check this
-    if(dateCol.diff != 0){
-      check.order <- df.pm[order(df.pm[[dateCol]])]
-      dateCol.diff <- check.order[[dateCol]][1] - (check.order[[dateCol]][2])
-    }
-    #check if the year is repeating
-    if(is.integer(df.pm[[dateCol]]) && (is.unsorted(df.pm[[dateCol]])) | dateCol.diff == 0){
-      col.names <- names(df.pm)
-      for(j in 1:length(col.names)){
-        if(col.names[j] != dateCol){
-          print (col.names[j])
-          check.order <-  df.pm[order(df.pm[[col.names[1]]],df.pm[[dateCol]]),] #order will affect all columns, sso output is a data frame
-          diff <-  check.order[[dateCol]][2] -  check.order[[dateCol]][1]
-          print(diff)
-          print(check.order)
-          if(diff == 1){
-            #df.pm[[dateCol]] <-  df.
-            print("achieved")
-            col2forecast_agg <- check.order
-            Setfreq <- 1
-            x <- ts(col2forecast_agg[[col2forecast]], frequency = Setfreq) #convert to time series
+  names(dfWithAggregatedColumn) <- c(temporalDim, columnToForecast)
 
-            names(col2forecast_agg)[names(col2forecast_agg) == col2forecast] <- 'x'
+  return(dfWithAggregatedColumn)
+}
 
-            #future date sequence
-            from.val <-  (as.integer(tail((substr(df[[dateCol]], start = 1, stop = 4)),1)) + 1)
-            to.val <- from.val+(fcastFrequency-1)
-            future.seq <- seq(from.val,to.val)
+# aggregatedColumn <- dfWithAggregatedColumn$x #it will always be x
 
-            break()
+convertToTSclass <- function(freqNumber, aggregatedColumn,dfWithAggregatedColumn) {
+
+  if(length(aggregatedColumn) < 10 && (((length(nrow(dfWithAggregatedColumn)) < 25) #first and second condiiton are the same - check again.
+          || (is_true(isZero(dfWithAggregatedColumn[[columnToForecast]])))))){
+    tryCatch(
+      # This is what I want to do:
+      ts_class <- ts(aggregatedColumn, frequency = freqNumber)
+      ,
+      # ... but if an error occurs, tell me what happened:
+      error=function(error_message) {
+        message("And below is the error message from R:")
+        message(error_message)
+        return(NA)
+      }
+    )
+
+    return(NULL)
+
+  }else{
+    ts(aggregatedColumn, frequency = freqNumber)
+  }
+
+  # ts_class <- ts(aggregatedColumn, frequency = freqNumber)
+
+}
+
+futureTemporalDim <- function(df, temporalDim, freqNumber, fcastFrequency){
+  temporalDimLastVal <- (tail(df[[temporalDim]],1))
+
+  if(freqNumber == 8766){
+    print("Hourly future dates")
+
+
+    end.date <- temporalDimLastVal
+    hour(end.date) <- hour(end.date) + (fcastFrequency-1)
+    futureSeq <- seq(temporalDimLastVal, end.date, "hour")
+
+
+  }else if(freqNumber == 365.25){
+
+    print("Daily future dates")
+
+    end.date <- temporalDimLastVal
+    day(end.date) <- day(end.date) + (fcastFrequency-1)
+    futureSeq <- seq(temporalDimLastVal, end.date, "day")
+
+  }else if(freqNumber == 12){
+
+    print("Monthly future dates")
+
+    end.date <- temporalDimLastVal
+    month(end.date) <- month(end.date) + (fcastFrequency-1)
+    futureSeq <- seq(temporalDimLastVal, end.date, "month")
+
+
+  }else {
+
+    print("Yearly future dates")
+    # futureStartDate <- as.integer(year(temporalDimLastVal)) + 1
+    # futureEndDate <- futureStartDate + (fcastFrequency-1)
+    # futureSeq <- seq(futureStartDate,futureEndDate)
+
+    end.date <- temporalDimLastVal
+    year(end.date) <- year(end.date) + (fcastFrequency-1)
+    futureSeq <- seq(temporalDimLastVal, end.date, "year")
+
+  }
+
+  return(futureSeq)
+
+}
+
+
+
+
+forecasting <- function(df, temporalDim, futureSeq, columnToForecast, supplied_model, fcastFrequency, freqNumber){
+
+  dfWithAggregatedColumn <- aggregateForecastColumn(df,columnToForecast, freqNumber, temporalDim)
+
+
+  # ##########Split data for train and test##########
+  if(nrow(dfWithAggregatedColumn) >10){
+    dfWithAggregatedColumn$rowcount <- 1:nrow(dfWithAggregatedColumn);
+    set.seed(1234);
+    splitIndex <- createDataPartition(dfWithAggregatedColumn[["rowcount"]], p = .65, list = FALSE, times = 1);
+    trainDF <- dfWithAggregatedColumn[ splitIndex,];
+    testDF  <- dfWithAggregatedColumn[-splitIndex,];
+  }
+
+
+  aggregatedColumn <- trainDF[[columnToForecast]]
+
+  # aggregatedColumn <- dfWithAggregatedColumn[[columnToForecast]]
+
+
+
+  ts_class <- convertToTSclass(freqNumber, aggregatedColumn,dfWithAggregatedColumn)
+  ts_class_test <- convertToTSclass(freqNumber, testDF[[columnToForecast]],dfWithAggregatedColumn)
+
+  x.diff <- ndiffs(dfWithAggregatedColumn[[columnToForecast]])
+
+  if(x.diff == 1){
+    print("Taking first difference")
+    # first.diff <- diff(col2forecast_agg[[col2forecast]])
+    first.diff <- diff(dfWithAggregatedColumn[[columnToForecast]])
+    # col2forecast_agg <- col2forecast_agg[nrow(col2forecast_agg)-1:nrow(col2forecast_agg), ]
+    dfWithAggregatedColumn <- dfWithAggregatedColumn[nrow(dfWithAggregatedColumn)-1:nrow(dfWithAggregatedColumn), ]
+    # col2forecast_agg$x <- first.diff
+    dfWithAggregatedColumn$columnToForecast <- first.diff
+  }else if(x.diff ==2){
+    print("Taking second difference")
+      # dfWithAggregatedColumn$columnToForecast <- diff(diff((dfWithAggregatedColumn[[columnToForecast]])))
+    secondDiff <- diff(diff((dfWithAggregatedColumn[[columnToForecast]])))
+
+  }else{
+    print("Time series is stationary")
+  }
+
+
+  ##########Build models##########
+
+
+  # #check for short time series <50 obs after aggregation. if true use auto arima - refer Hyndman's blog
+  # if((missing(supplied_model) || is.null(supplied_model)) && (length(dfWithAggregatedColumn[[columnToForecast]]) <= 10) && (!is.null(ts_class))){
+  #
+  #   fit.aa <- auto.arima(ts_class,max.order=3, stepwise = TRUE, seasonal = FALSE)
+  #   fit.aa <- serialize(fit.aa,NULL)
+  #   point.preds <- forecast(fit.aa.original,h=fcastFrequency)
+  #   myForecast <- as.data.frame(point.preds$mean)
+  #
+  #   linear.season.mse <- NULL; linear.trend.mse <- NULL; aa.mse <- NULL; nn.mse <- NULL
+  #
+  #   shortSeries = 1
+  # }
+
+
+  if(missing(supplied_model) || is.null(supplied_model) && ((!is.null(ts_class)) || !is.null(ts_class_test))){
+
+    # ||
+
+    linear.trend <- tslm(ts_class ~ trend)
+
+    #Linear with seasonality
+    if(freqNumber > 1){
+      linear.season <- tslm(ts_class ~+ trend + season)
+      #linear seasonality model
+      # linear.season.mse.test <- tslm(testDF, model=linear.season)
+      linear.season.mse <- forecast::accuracy(linear.season)
+      linear.season.mse <- linear.season.mse[,6]
+
+        # tryCatch(
+        #   # This is what I want to do:
+          if(is.nan(linear.season.mse)){
+            print("setting linear model metric to nan")
+          }else{
+            linear.season.mse = NaN
           }
-        }
-      }
-    }
-  }
 
-  # ###process cardinality check - as in per bill code revenue - Not implementing now ###
-  # #Eventually this will contain both stationarity check and model bulding
+      seasonality.count <- summary(linear.season)$coef[,4] <= .05
+      seasonality.count.len <- length(seasonality.count[seasonality.count==TRUE])
 
-  #get the unique lables in col2forecast
-
-  # unique.rows.length <- list()
-
-  if(missing(cardinaldim) || is.null(cardinaldim)){
-    unique.lables <- 1
-  }else{
-    unique.lables <- unique(col2forecast_agg[[cardinaldim]])
-  }
-
-  unique.rows.length <- 0
-  myForecast.card <- NULL
-  for(j in 1:length(unique.lables)){
-    # if(!missing(cardinaldim) || !is.null(cardinaldim)){
-    if(!is.null(cardinaldim)){
-      #print("came here")
-      unique.rows <- col2forecast_agg[col2forecast_agg[[cardinaldim]]==unique.lables[j],]
-      print(unique.rows)
-      col2forecast_agg <- unique.rows
-      unique.rows.length <- unique.rows.length + nrow(unique.rows)
+      linear.season <- serialize(linear.season,NULL)
     }else{
-      #print(j)
-      col2forecast_agg <- col2forecast_agg
-      #break()
+      linear.season.mse <- NA
+      linear.season <-  NA
     }
 
+    if(exists("seasonality.count.len") && seasonality.count.len >10){
+      linear.season.mse = NaN
+    }
 
+    #check how many statistically significant seasonalities exist
 
-    #Stationarity check
-    x.diff <- ndiffs(col2forecast_agg[[col2forecast]])
-    if(x.diff == 1){
-      print("Taking first difference")
-      first.diff <- diff(col2forecast_agg[[col2forecast]])
-      col2forecast_agg <- col2forecast_agg[nrow(col2forecast_agg)-1:nrow(col2forecast_agg), ]
-      col2forecast_agg$x <- first.diff
-    }else if(x.diff ==2){
-      print("Taking second difference")
-      col2forecast_agg$x <- diff(diff(col2forecast_agg[[col2forecast]]))
+    if(exists("seasonality.count.len") && seasonality.count.len > 10){
+      seasonality.exist=1
     }else{
-      print("Time series is stationary")
+      seasonality.exist=0
     }
-    ##########Build models##########
-    if(missing(supplied_model) || is.null(supplied_model)){
-      #if(is.null(supplied_model)){
-      #linear model
-      linear.trend <- tslm(x ~ + trend)
 
-      #Linear with seasonality
-      if(Setfreq > 1){
-        linear.season <- tslm(x ~+ trend + season)
-        #linear seasonality model
-        linear.season.mse <- forecast::accuracy(linear.season)
-        linear.season.mse <- linear.season.mse[,6]
-        # linear.season.rsq <- (linear.season$residuals^2)
-        # linear.season.n.na <- length(linear.season.rsq)- length(na.omit(linear.season.rsq))
-        # linear.season.mse <- sum(na.omit(linear.season.rsq))/(length(linear.season.rsq)-linear.season.n.na)
+    #arima model, not using seasonal arima because of the excessive computation time.
+    #If seasonality exisits then arima mse value will be large
+    #this check is based on if the seasonality exists in linear model, it is faster that way
+    if(exists("seasonality.exist") && seasonality.exist == 1){
+      fit.aa <- auto.arima(ts_class,max.order=3, stepwise = TRUE, seasonal = FALSE)
+      print("Seasonality exists")
+    }else{
+      fit.aa <- auto.arima(ts_class,max.order=3, stepwise = TRUE, seasonal = FALSE)
+      #it is the same - fix this! - if truely seasonality doesnt exist, then this model make sense. how?
+    }
+    fit.aa.original <- fit.aa
+    #fit.aa <- auto.arima(x)
 
-        if(linear.season.mse == 0){
-          linear.season.mse = NaN
+    #Neurel net
+    set.seed(1234)
+    #fit.nn <- nnetar(ts_class, repeats = 3)
+
+    ################################
+    modelNeurelnet <- function(){
+      tryCatch(
+        # This is what I want to do:
+        fit.nn <- nnetar(ts_class, repeats = 3)
+        ,
+        # ... but if an error occurs, tell me what happened:
+        error=function(error_message) {
+          message("And below is the error message from R:")
+          message(error_message)
+          return(NaN)
+        }
+      )
+    }
+    ################################
+    fit.nn <- modelNeurelnet();
+
+    if(exists("fit.nn") && is.nnetar(fit.nn)){
+      nn.mse <- NaN
+    }
+
+    linear.trend.metrics <- forecast::accuracy(linear.trend)
+    linear.trend.mse <- linear.trend.metrics[,6]
+
+
+    #refit on test data
+    #linear seasonality is conditional on Setfreq object, see above
+
+    if(is.null(ts_class_test)){
+
+      ts_class_test <- ts_class
+
+    }
+
+    #arima
+
+    fit.aa.test <- Arima(testDF[[columnToForecast]], model=fit.aa,stepwise = TRUE)
+    aa.metrics <- forecast::accuracy(fit.aa.test)
+    aa.mse <- aa.metrics[,6]
+
+    # neural net
+    # refit on test data if the test observations are more. Checking only for daily data. Need to check for other
+    #frequencies.
+    if(!is.nnetar(fit.nn) && (freqNumber <= 365.25 && length(ts_class_test) < 365)){
+      nn.mse <- NaN
+      fit.nn.test <- NaN
+    }else if(exists("fit.nn") && is.nnetar(fit.nn)){
+
+      #if fit.nn exists and isa valid nnetar object then refit fit.nn on test data with try catch. TestDF may not be long enough for a successful refit
+      modelNeurelnetTest <- function(){
+        tryCatch(
+          # This is what I want to do:
+          fit.nn.test <- nnetar(model=fit.nn, ts_class_test)
+          ,
+          # ... but if an error occurs, tell me what happened:
+          error=function(error_message) {
+            message("And below is the error message from R:")
+            message(error_message)
+
+
+            return(NaN)
+          }
+        )
+      }
+
+      ################################
+      fit.nn.test <- modelNeurelnetTest();
+
+      if(exists("fit.nn.test") && is.nnetar(fit.nn.test)){
+        nn.metrics <- forecast::accuracy(fit.nn.test)
+        nn.mse <- nn.metrics[,6]
+
+      }else{
+        # fit.nn.test <- nnetar(model=fit.nn, ts_class_test)
+        nn.mse <- NaN
+      }
+
+    }else{
+      fit.nn.test <- NaN
+      nn.mse <- NaN
+    }
+
+
+        # fit.nn.testFit <- fitted(fit.nn.testModel)
+        # nn.metrics <- forecast::accuracy(ts_class, fit.nn.testFit, test=testDF[[columnToForecast]])
+
+
+
+        if((exists("fit.nn.test") && (exists("fit.aa.test"))) && (is.nan(linear.trend.mse) || is.nan(aa.mse) || is.nan(nn.mse))){
+          linear.trend.metrics<- forecast::accuracy(linear.trend)
+          aa.metrics <- forecast::accuracy(fit.aa.test)
+          if(exists("fit.nn.test") & class(fit.nn.test) == "nnetar"){
+            nn.metrics <- forecast::accuracy(fit.nn.test)
+            nn.mse <- nn.metrics[,2]
+          }else{
+            nn.metrics <- NA #not sure here
+          }
+
+          linear.trend.mse <- linear.trend.metrics[,2]
+          aa.mse <- aa.metrics[,2]
+
+          metric.rmse = 1
+
+        }else{
+          metric.rmse = 0
         }
 
-        seasonality.count <- summary(linear.season)$coef[,4] <= .05
-        seasonality.count.len <- length(seasonality.count[seasonality.count==TRUE])
-
-        linear.season <- serialize(linear.season,NULL)
-      }else{
-        linear.season.mse <- NA
-        linear.season <-  NA
-      }
-      #check how many statistically significant seasonalities exist
-
-      if(exists("seasonality.count.len") && seasonality.count.len > 10){
-        seasonality.exist=1
-      }else{
-        seasonality.exist=0
-      }
 
 
-      #arima model, not using seasonal arima becasue of the excessive computation time.
-      #If seasonality exisits then arima mse value will be large
-      #this check is based on if the seasonality exists in linear model, it is faster that way
-      if(exists("seasonality.exist") && seasonality.exist == 1){
-        fit.aa <- auto.arima(x,max.order=3, stepwise = TRUE, seasonal = FALSE)
-      }else{
-        fit.aa <- auto.arima(x,max.order=3, stepwise = TRUE, seasonal = FALSE) #if truely seasonality doesnt exist, then this model make sense
-      }
-
-      #fit.aa <- auto.arima(x)
-
-      #Neurel net
-      set.seed(1234)
-      fit.nn<- nnetar(x, repeats = 2)
-
-      #evaluate model accuracy
-
-      #linear trend model
-      linear.trend.metrics <- forecast::accuracy(linear.trend)
-      linear.trend.mse <- linear.trend.metrics[,6]
-      # linear.trend.rsq <- (linear.trend$residuals^2)
-      # linear.trend.n.na <- length(linear.trend.rsq)- length(na.omit(linear.trend.rsq))
-      # linear.trend.mse <- sum(na.omit(linear.trend.rsq))/(length(linear.trend.rsq)-linear.trend.n.na)
-
-      #linear seasonality is conditional on Setfreq object, see above
-
-      #arima
-      aa.metrics <- forecast::accuracy(fit.aa)
-      aa.mse <- aa.metrics[,6]
-
-      # aa.rsq <- (fit.aa$residuals^2)
-      # aa.n.na <- length(aa.rsq)- length(na.omit(aa.rsq))
-      # aa.mse <- sum(na.omit(aa.rsq))/(length(aa.rsq)-aa.n.na)
-
-      # neural net
-      nn.metrics <- forecast::accuracy(fit.nn)
-      nn.mse <- nn.metrics[,6]
-      if(is.nan(linear.trend.mse) || is.nan(aa.mse) || is.nan(nn.mse)){
-        linear.trend.metrics<- forecast::accuracy(linear.trend)
-        aa.metrics <- forecast::accuracy(fit.aa)
-        nn.metrics <- forecast::accuracy(fit.nn)
-        linear.trend.mse <- linear.trend.metrics[,2]
-        aa.mse <- aa.metrics[,2]
-        nn.mse <- nn.metrics[,2]
-
-        metric.rmse = 1
-
-      }else{
-        metric.rmse = 0
-      }
-
-      # nn.rsq <- (fit.nn$residuals^2)
-      # nn.n.na <- length(nn.rsq)- length(na.omit(nn.rsq))
-      # nn.mse <- sum(na.omit(nn.rsq))/(length(nn.rsq)-nn.n.na)
-      #
-      #compare model accuracy
-      model.accuracy <- list(linear.trend.mse,linear.season.mse,aa.mse,nn.mse)
-      names(model.accuracy) <- c("linear trend", "linear season and trend", "auto arima", "neural nets")
-      best_model <- model.accuracy[which.min(model.accuracy)]
+    #compare model accuracy
+    model.accuracy <- list(linear.trend.mse,linear.season.mse,aa.mse,nn.mse)
+    names(model.accuracy) <- c("linear trend", "linear season and trend", "auto arima", "neural nets")
+    best_model <- model.accuracy[which.min(model.accuracy)]
 
 
-      #serialize models
-      linear.trend <- serialize(linear.trend,NULL)
-      #linear seasonal model is above, condition based
-      fit.aa <- serialize(fit.aa,NULL)
-      #fit.aa.xreg <- serialize(fit.aa.xreg,NULL)
+    #serialize models
+    linear.trend <- serialize(linear.trend,NULL)
+    #linear seasonal model is above, condition based
+    fit.aa <- serialize(fit.aa,NULL)
+    #fit.aa.xreg <- serialize(fit.aa.xreg,NULL)
+    if(exists("fit.nn") && is.nnetar(fit.nn)){
       fit.nn <- serialize(fit.nn,NULL)
-      #fit.nn.xreg <- serialize(fit.nn.xreg,NULL)
-
-      #list and name the serialized models
-      #blackbox.bestmodel <- linear.season
-      blackbox <- list(linear.trend,linear.season,fit.aa,fit.nn)
-      names(blackbox) <- c("linear trend", "Linear season and trend",
-                           "auto arima","neural nets")
-
-      if(names(best_model) == "linear trend"){
-        print("Best model is linear trend")
-        blackbox <- (blackbox[[1]])
-      }
-      if(names(best_model) == "linear season and trend"){
-        print("Best model is linear season and trend")
-        blackbox <- (blackbox[[2]])
-      }
-      if(names(best_model) == "auto arima"){
-        print("Best model is auto arima")
-        blackbox <- (blackbox[[3]])
-      }
-      if(names(best_model) == "neural nets"){
-        print("Best model is neural nets")
-        blackbox <- (blackbox[[4]])
-      }
-      supplied = 0
     }else{
-      print("model supplied")
-      blackbox <- supplied_model
-      supplied = 1
+      nn.mse <- NaN
     }
 
+    #fit.nn.xreg <- serialize(fit.nn.xreg,NULL)
+
+    #list and name the serialized models
+    #blackbox.bestmodel <- linear.season
+    blackbox <- list(linear.trend,linear.season,fit.aa,fit.nn)
+    names(blackbox) <- c("linear trend", "Linear season and trend",
+                         "auto arima","neural nets")
+
+
+            if(names(best_model) == "linear trend"){
+              print("Best model is linear trend")
+              blackbox <- (blackbox[[1]])
+            }
+            if(names(best_model) == "linear season and trend"){
+              print("Best model is linear season and trend")
+              blackbox <- (blackbox[[2]])
+            }
+            if(names(best_model) == "auto arima"){
+              print("Best model is auto arima")
+              blackbox <- (blackbox[[3]])
+            }
+            if(names(best_model) == "neural nets"){
+              print("Best model is neural nets")
+              blackbox <- (blackbox[[4]])
+
+              }
+
+
+
+  supplied = 0
+
+  }else if((missing(supplied_model) || is.null(supplied_model)) && ((is_true(isZero(dfWithAggregatedColumn[[columnToForecast]]))))) {
+
+    print("Just zeros - no forecast possible")
+
+    linear.season.mse <- NaN; linear.trend.mse <- NaN; aa.mse <- NaN; nn.mse <- NaN
+    blackbox <- NULL
+    myForecast <- 0
+    supplied = 0
+
+  }else if((missing(supplied_model) || is.null(supplied_model)) && (is.null(ts_class_test) || is.null(ts_class))){
+
+    print("Not enough data - JUst going to be a mean forecast")
+
+    linear.season.mse <- NaN; linear.trend.mse <- NaN; aa.mse <- NaN; nn.mse <- NaN
+    blackbox <- NULL
+
+    is.na(dfWithAggregatedColumn[[columnToForecast]]) <- (dfWithAggregatedColumn[[columnToForecast]])==0 #convert 0 values to NA before taking mean
+
+    myForecast <- mean(dfWithAggregatedColumn[[columnToForecast]], na.rm=TRUE)
+    supplied = 0
+
+  }else{
+
+    print("model supplied")
+    blackbox <- supplied_model
+    supplied = 1
+    set.seed(12345)
+  }
+
+  # blackbox.names <- names(blackbox)
+  # myforecastModel <- unserialize(blackbox, NULL)
+
+
+  if(exists("blackbox") && !is.null(blackbox)){
     blackbox.names <- names(blackbox)
     myforecastModel <- unserialize(blackbox, NULL)
-
-
-
-    #check for xreg and fake xreg
-    model.names <- names(myforecastModel)
-    a=1
-    model.typ <- NULL
-    if("xreg" %in% model.names){
-      #check for fake xreg which is just a sequence
-      xreg.count = 0
-      for(m in 1:4){
-        fake.xreg <- (myforecastModel$xreg[m] + 1) - myforecastModel$xreg[m]
-        print("looping for xreg")
-        if(fake.xreg == 1){
-          xreg.count = xreg.count + 1
-        }
+      #check for xreg and fake xreg
+  model.names <- names(myforecastModel)
+  a=1
+  model.typ <- NULL
+  if("xreg" %in% model.names){
+    #check for fake xreg which is just a sequence
+    xreg.count = 0
+    for(m in 1:4){
+      fake.xreg <- (myforecastModel$xreg[m] + 1) - myforecastModel$xreg[m]
+      print("looping for xreg")
+      if(fake.xreg == 1){
+        xreg.count = xreg.count + 1
       }
-      if(xreg.count == 4){
-        print("Fake xreg passed with auto arima. It is just a sequence")
-        xreg = NULL
-      }else if(xreg < 4){
-        print("Found xreg")
-        xreg <-
-          xreg <- as.data.frame(xreg)
-      }
-    }else{
-      print("No xregs found")
+    }
+    if(xreg.count == 4){
+      print("Fake xreg passed with auto arima. It is just a sequence")
       xreg = NULL
+    }else if(xreg < 4){
+      print("Found xreg")
+      xreg <-
+        xreg <- as.data.frame(xreg)
     }
-
-    for(a in 1:length(model.names)){
-      print(a)
-      if(model.names[a] == "nnetargs"){
-        print("found nnetargs")
-        model.typ = "nnetargs"
-      }
-      if(model.names[a] == "arma"){
-        print("Found auto arima")
-        model.typ <- "arima"
-      }
-      if(model.names[a] == "df.residual"){
-        print("Found linear")
-        model.typ <- "linear"
-      }
-    }
-
-    if(missing(fcastFrequency)){
-      fcastFrequency=Setfreq
-    }
-    # xreg="blank"
-    myForecast <- c()
-    if(is.data.frame(xreg)) {
-      if((exists("xreg") && is.data.frame(xreg)) && model.typ == "nnetargs"){
-        print("found nn with xreg")
-        #xreg <- myforecastModel$xreg
-        point.preds <- predict(myforecastModel, data=train, xreg = xreg)
-        myForecast <- as.data.frame(point.preds$mean)
-        names(myForecast)<- c("Forecast")
-      }
-      if(((exists("xreg") && is.data.frame(xreg))) && (model.typ == "arima")){
-        print("found arima with xreg")
-        #xreg <- myforecastModel$xreg
-        point.preds <- predict(myforecastModel, data=train, newxreg = xreg,h=fcastFrequency)
-        myForecast <- as.data.frame(point.preds$pred)
-        myForecast <- myForecast$x
-        names(myForecast)<- c("Forecast")
-      }
-    }
-    if(is.null(xreg)){
-      print("neural net without xreg found")
-      if(model.typ == "linear" || model.typ == "nnetargs"){
-        #print(fcastFrequency)
-        print("socomecs model could be linear or neural net")
-        if(model.typ == "linear"){
-          point.preds <- forecast(myforecastModel,h=fcastFrequency)
-          print("Its linear")
-        }else{
-          point.preds <- forecast(myforecastModel,h=fcastFrequency)
-          print("Its neural net")
-        }
-
-        myForecast <- as.data.frame(point.preds)
-        names(myForecast)<- c("Forecast")
-        # break()
-      }
-      if(model.typ == "arima"){
-        print("arima without xreg")
-        point.preds <- forecast(myforecastModel,h=fcastFrequency)
-        myForecast <- as.data.frame(point.preds$mean)
-        names(myForecast) <- c("Forecast")
-      }
-    }
-
-    #collect all forcasted rows
-    myForecast.card <- rbind(myForecast, myForecast.card)
-
-  } #cardinality for loop closing brace
-
-
-
-  if(missing(cardinaldim) || is.null(cardinaldim)){
-
-    nrow=fcastFrequency
-
   }else{
-    nrow = fcastFrequency*(length(unique.lables))
+    print("No xregs found")
+    xreg = NULL
   }
 
-  # df <- rbind(df)
+  for(a in 1:length(model.names)){
+    print(a)
+    if(model.names[a] == "nnetargs"){
+      print("found nnetargs")
+      model.typ = "nnetargs"
+    }
+    if(model.names[a] == "arma"){
+      print("Found auto arima")
+      model.typ <- "arima"
+    }
+    if(model.names[a] == "df.residual"){
+      print("Found linear")
+      model.typ <- "linear"
+    }
+  }
+
+  if(missing(fcastFrequency)){
+    fcastFrequency=freqNumber
+  }
+  # xreg="blank"
+  myForecast <- c()
+  if(is.data.frame(xreg)) {
+    if((exists("xreg") && is.data.frame(xreg)) && model.typ == "nnetargs"){
+      print("found nn with xreg")
+      #xreg <- myforecastModel$xreg
+      point.preds <- predict(myforecastModel, data=testDF, xreg = xreg)
+      myForecast <- as.data.frame(point.preds$mean)
+      names(myForecast)<- c("Forecast")
+    }
+    if(((exists("xreg") && is.data.frame(xreg))) && (model.typ == "arima")){
+      print("found arima with xreg")
+      #xreg <- myforecastModel$xreg
+      point.preds <- predict(myforecastModel, data=testDF, newxreg = xreg,h=fcastFrequency)
+      myForecast <- as.data.frame(point.preds$pred)
+      myForecast <- myForecast$x
+      names(myForecast)<- c("Forecast")
+    }
+  }
+  if(is.null(xreg)){
+    print("neural net without xreg found")
+    if(model.typ == "linear" || model.typ == "nnetargs"){
+      #print(fcastFrequency)
+      print("socomecs model could be linear or neural net")
+      if(model.typ == "linear"){
+        point.preds <- forecast(myforecastModel,h=fcastFrequency)
+        point.preds <- point.preds$mean
+        print("Its linear")
+      }else{
+        point.preds <- forecast(myforecastModel,h=fcastFrequency)
+        print("Its neural net")
+      }
+
+      myForecast <- as.data.frame(point.preds)
+      names(myForecast)<- c("Forecast")
+      # break()
+    }
+    if(model.typ == "arima"){
+      print("arima without xreg")
+      point.preds <- forecast(myforecastModel,h=fcastFrequency)
+      myForecast <- as.data.frame(point.preds$mean)
+      names(myForecast) <- c("Forecast")
+    }
+  }
+}
+
+
+
   names <- names(df)
   output <- data.frame()
   # names(myforecast) <- c(names)
   df.ncol <- ncol(df)
-  output <- data.frame(matrix(ncol = df.ncol, nrow =nrow))
+  output <- data.frame(matrix(ncol = df.ncol, nrow =fcastFrequency))
   x <- c(names)
   colnames(output) <- c(x)
+  output[columnToForecast] <- myForecast
 
-  if(missing(cardinaldim) || is.null(cardinaldim)){
-    output[col2forecast] <- myForecast
-  }else{
-    output[col2forecast] <- myForecast.card
-  }
+  output[temporalDim] <- futureSeq #fill the spatial dimesnion with the future sequence
 
-  output[dateCol] <- future.seq #fill the spatial dimesnion with the future sequence
+  # #model accuracy metrics
+  # models.accuracy.metrics <- data.frame()
+  # # names(myforecast) <- c(names)
+  # models.accuracy.metrics <- data.frame(matrix(ncol = 3, nrow =4))
+  # names(models.accuracy.metrics) <- c("model_name", "metric_name", "metric_value")
+  #
+  # if(exists("metric.rmse") && metric.rmse == 1){
+  #   metric_name <- c("Root Mean Squared Error")
+  # }else{
+  #   metric_name <- c("Mean Abs Squared Error")
+  # }
+  #
+  # model_name <- c("Linear Seasonality","Linear Trend","Auto ARIMA","Neurelnet")
+  # metric_value <- c(linear.season.mse, linear.trend.mse ,aa.mse,nn.mse)
+  # models.accuracy.metrics$model_name <- model_name
+  # models.accuracy.metrics$metric_name <- metric_name
+  # models.accuracy.metrics$metric_value <- metric_value
 
-  #fill in cardinal dimension
-  cardinaldim.list <-list()
-  for(k in 1:length(unique.lables)){
-    label <- unique.lables[k]
-    for(l in 1:fcastFrequency){
-      cardinaldim.list<- append(cardinaldim.list,label)
+
+  inputMeasureType <- class(df[[columnToForecast]])
+
+  #convert 'columnToForecast' to input class
+
+  convertToClass <- function(output, measureType){
+
+    inputClass <- inputMeasureType
+
+    if(inputClass == "integer"){
+
+      output[[columnToForecast]] <- as.integer(output[[columnToForecast]])
+
+    }else{
+
+      output[[columnToForecast]] <- as.numeric(output[[columnToForecast]])
+
     }
-    #output[cardinaldim] <- list(unique.lables)
-  }
-  output[cardinaldim] <- unlist(cardinaldim.list)
 
-  #model accuracy metrics
-  models.accuracy.metrics <- data.frame()
-  # names(myforecast) <- c(names)
-  models.accuracy.metrics <- data.frame(matrix(ncol = 3, nrow =4))
-  names(models.accuracy.metrics) <- c("model_name", "metric_name", "metric_value")
+    return(output)
 
-  if(metric.rmse == 1){
-    metric_name <- c("Root Mean Squared Error")
-  }else{
-    metric_name <- c("Mean Abs Squared Error")
   }
 
-  model_name <- c("Linear Seasonality","Linear Trend","Auto ARIMA","Neurelnet")
-  metric_value <- c(linear.season.mse, linear.trend.mse ,aa.mse,nn.mse)
-  models.accuracy.metrics$model_name <- model_name
-  models.accuracy.metrics$metric_name <- metric_name
-  models.accuracy.metrics$metric_value <- metric_value
-
+  output <- convertToClass(output, measureType);
 
   if(supplied == 0){
+
+    #model accuracy metrics
+    models.accuracy.metrics <- data.frame()
+    # names(myforecast) <- c(names)
+    models.accuracy.metrics <- data.frame(matrix(ncol = 3, nrow =4))
+    names(models.accuracy.metrics) <- c("model_name", "metric_name", "metric_value")
+
+    if(exists("metric.rmse") && metric.rmse == 1){
+      metric_name <- c("Root Mean Squared Error")
+    }else{
+      metric_name <- c("Mean Abs Squared Error")
+    }
+
+    model_name <- c("Linear Seasonality","Linear Trend","Auto ARIMA","Neurelnet")
+    metric_value <- c(linear.season.mse, linear.trend.mse ,aa.mse,nn.mse)
+    models.accuracy.metrics$model_name <- model_name
+    models.accuracy.metrics$metric_name <- metric_name
+    models.accuracy.metrics$metric_value <- metric_value
+
     output <- list(blackbox, output, models.accuracy.metrics)
     names(output) <- c("model", "df", "accuracy_metrics")
     print("First time, returning the best model")
@@ -1332,7 +1437,10 @@ autoForecast <- function(df,dateCol,col2forecast,fcastFrequency,supplied_model,c
   }else{
     print("No model returned")
     output <- list(output)
-    names(output) <- c("df","accuracy_metrics")
+    names(output) <- c("df")
     return(output)
   }
+
 }
+
+
