@@ -14,7 +14,7 @@ CA_POSIXct = 9
 learn.ca = function() {
   withCallingHandlers({
     #connect to CA
-    con <- caDB:connect.ca()
+    con <- caDB::connect.ca()
 
     #Load data
     df <- con$load()
