@@ -379,6 +379,9 @@ processTemporalDim = function(df=NULL,temporalDim=NULL) {
       df[[temporalDim]] <- temp
   }
 
+  #change the timezone to UTC
+  attributes(df[[temporalDim]])$tzone <- "UTC"
+
   resp[["df"]] <- df
   resp[["caType"]] <- caType
 

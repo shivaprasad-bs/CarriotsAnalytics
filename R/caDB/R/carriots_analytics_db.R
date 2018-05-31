@@ -292,7 +292,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
               df[[col_label]] = as.Date(as.character(df[[col_label]]))
             }
             else if(col_type == 'timestamp') {
-              df[[col_label]] = as.POSIXct(df[[col_label]],tz = "GMT")
+              df[[col_label]] = as.POSIXct(df[[col_label]],tz = "UTC")
             }
           }
         }
