@@ -908,7 +908,7 @@ futureTemporalDim <- function(df, temporalDim, freqNumber, fcastFrequency){
   if(freqNumber == 8766){
     print("Hourly future dates")
 
-
+    hour(temporalDimLastVal) <- hour(temporalDimLastVal) + 1
     end.date <- temporalDimLastVal
     hour(end.date) <- hour(end.date) + (fcastFrequency-1)
     futureSeq <- seq(temporalDimLastVal, end.date, "hour")
@@ -918,6 +918,7 @@ futureTemporalDim <- function(df, temporalDim, freqNumber, fcastFrequency){
 
     print("Daily future dates")
 
+    day(temporalDimLastVal) <- day(temporalDimLastVal) + 1
     end.date <- temporalDimLastVal
     day(end.date) <- day(end.date) + (fcastFrequency-1)
     futureSeq <- seq(temporalDimLastVal, end.date, "day")
@@ -926,6 +927,7 @@ futureTemporalDim <- function(df, temporalDim, freqNumber, fcastFrequency){
 
     print("Monthly future dates")
 
+    month(temporalDimLastVal) <- month(temporalDimLastVal) + 1
     end.date <- temporalDimLastVal
     month(end.date) <- month(end.date) + (fcastFrequency-1)
     futureSeq <- seq(temporalDimLastVal, end.date, "month")
@@ -938,6 +940,7 @@ futureTemporalDim <- function(df, temporalDim, freqNumber, fcastFrequency){
     # futureEndDate <- futureStartDate + (fcastFrequency-1)
     # futureSeq <- seq(futureStartDate,futureEndDate)
 
+    year(temporalDimLastVal) <- year(temporalDimLastVal) + 1
     end.date <- temporalDimLastVal
     year(end.date) <- year(end.date) + (fcastFrequency-1)
     futureSeq <- seq(temporalDimLastVal, end.date, "year")
@@ -1112,7 +1115,7 @@ forecasting <- function(df, temporalDim, futureSeq, columnToForecast, supplied_m
     aa.metrics <- forecast::accuracy(fit.aa.test)
     aa.mse <- aa.metrics[,6]
 
-    # neural net
+    # neural net 
     # refit on test data if the test observations are more. Checking only for daily data. Need to check for other
     #frequencies.
     if(!is.nnetar(fit.nn) && (freqNumber <= 365.25 && length(ts_class_test) < 365)){
