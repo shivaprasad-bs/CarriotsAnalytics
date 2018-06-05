@@ -326,7 +326,11 @@ getFilteredDf <- function(df = NULL, cardinalFilter = NULL, selectCols = NULL) {
   #prepare a filter string for cardinal dims
   for(i in 1:ncol(cardinalFilter)) {
     if(nchar(filterStr) > 0) filterStr <- paste(filterStr," & ")
-    filterStr <- paste(filterStr,paste(colnames(cardinalFilter[i]),paste("'",cardinalFilter[[i]],"'",sep = ""),sep = " == "),sep="")
+
+    if(is.na(cardinalFilter[[i]]))
+      filterStr <- paste(filterStr,paste("is.na(",colnames(cardinalFilter[i]),")",sep = ""),sep = "")
+    else
+      filterStr <- paste(filterStr,paste(colnames(cardinalFilter[i]),paste("'",cardinalFilter[[i]],"'",sep = ""),sep = " == "),sep="")
   }
 
   #build a dataframe filtered on the cardinal dims
@@ -815,10 +819,10 @@ autoForecast <- function (df,temporalDim,columnToForecast,fcastFrequency,supplie
   freqNumber <- computeTemporalFreq(df,temporalDim)
 
   futureSeq <- futureTemporalDim(df, temporalDim, freqNumber, fcastFrequency)
-  
+
   dfWithAggregatedColumn <- aggregateForecastColumn(df,columnToForecast, freqNumber, temporalDim)
-  
-  if(nrow(dfWithAggregatedColumn) < 10) 
+
+  if(nrow(dfWithAggregatedColumn) < 10)
     stop("too few observations, cant proceed with forecasting")
 
   forecasting(df, temporalDim, futureSeq, columnToForecast, supplied_model, fcastFrequency, freqNumber);
@@ -965,13 +969,13 @@ forecasting <- function(df, temporalDim, futureSeq, columnToForecast, supplied_m
 
 
   # ##########Split data for train and test##########
-  
+
     dfWithAggregatedColumn$rowcount <- 1:nrow(dfWithAggregatedColumn);
     set.seed(1234);
     splitIndex <- createDataPartition(dfWithAggregatedColumn[["rowcount"]], p = .65, list = FALSE, times = 1);
     trainDF <- dfWithAggregatedColumn[ splitIndex,];
     testDF  <- dfWithAggregatedColumn[-splitIndex,];
-  
+
 
 
   aggregatedColumn <- trainDF[[columnToForecast]]
@@ -1088,8 +1092,8 @@ forecasting <- function(df, temporalDim, futureSeq, columnToForecast, supplied_m
         ,
         # ... but if an error occurs, tell me what happened:
         error=function(error_message) {
-          message("And below is the error message from R:")
-          message(error_message)
+          print("And below is the error message from R:")
+          print(error_message)
           return(NaN)
         }
       )
@@ -1120,7 +1124,7 @@ forecasting <- function(df, temporalDim, futureSeq, columnToForecast, supplied_m
     aa.metrics <- forecast::accuracy(fit.aa.test)
     aa.mse <- aa.metrics[,6]
 
-    # neural net 
+    # neural net
     # refit on test data if the test observations are more. Checking only for daily data. Need to check for other
     #frequencies.
     if(!is.nnetar(fit.nn) && (freqNumber <= 365.25 && length(ts_class_test) < 365)){
@@ -1136,8 +1140,8 @@ forecasting <- function(df, temporalDim, futureSeq, columnToForecast, supplied_m
           ,
           # ... but if an error occurs, tell me what happened:
           error=function(error_message) {
-            message("And below is the error message from R:")
-            message(error_message)
+            print("And below is the error message from R:")
+            print(error_message)
 
 
             return(NaN)
@@ -1397,7 +1401,7 @@ forecasting <- function(df, temporalDim, futureSeq, columnToForecast, supplied_m
   # models.accuracy.metrics$metric_value <- metric_value
 
 
-  inputMeasureType <- class(df[[columnToForecast]])
+  inputMeasureType <- typeof(df[[columnToForecast]])
 
   #convert 'columnToForecast' to input class
 
@@ -1405,13 +1409,16 @@ forecasting <- function(df, temporalDim, futureSeq, columnToForecast, supplied_m
 
     inputClass <- inputMeasureType
 
-    if(inputClass == "integer"){
+    if(inputClass == "double"){
+      output[[columnToForecast]] <- as.double(output[[columnToForecast]])
+    }
+    else if(inputClass == "numeric"){
 
-      output[[columnToForecast]] <- as.integer(output[[columnToForecast]])
+      output[[columnToForecast]] <- as.numeric(output[[columnToForecast]])
 
     }else{
 
-      output[[columnToForecast]] <- as.numeric(output[[columnToForecast]])
+      output[[columnToForecast]] <- as.integer(output[[columnToForecast]])
 
     }
 
