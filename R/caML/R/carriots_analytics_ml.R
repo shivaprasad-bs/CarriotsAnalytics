@@ -815,6 +815,11 @@ autoForecast <- function (df,temporalDim,columnToForecast,fcastFrequency,supplie
   freqNumber <- computeTemporalFreq(df,temporalDim)
 
   futureSeq <- futureTemporalDim(df, temporalDim, freqNumber, fcastFrequency)
+  
+  dfWithAggregatedColumn <- aggregateForecastColumn(df,columnToForecast, freqNumber, temporalDim)
+  
+  if(nrow(dfWithAggregatedColumn) < 10) 
+    stop("too few observations, cant proceed with forecasting")
 
   forecasting(df, temporalDim, futureSeq, columnToForecast, supplied_model, fcastFrequency, freqNumber);
 }
@@ -886,13 +891,13 @@ convertToTSclass <- function(freqNumber, aggregatedColumn,dfWithAggregatedColumn
       ,
       # ... but if an error occurs, tell me what happened:
       error=function(error_message) {
-        message("And below is the error message from R:")
-        message(error_message)
+        print("And below is the error message from R:")
+        print(error_message)
         return(NA)
       }
     )
 
-    return(NULL)
+    # return(NULL)
 
   }else{
     ts(aggregatedColumn, frequency = freqNumber)
@@ -960,13 +965,13 @@ forecasting <- function(df, temporalDim, futureSeq, columnToForecast, supplied_m
 
 
   # ##########Split data for train and test##########
-  if(nrow(dfWithAggregatedColumn) >10){
+  
     dfWithAggregatedColumn$rowcount <- 1:nrow(dfWithAggregatedColumn);
     set.seed(1234);
     splitIndex <- createDataPartition(dfWithAggregatedColumn[["rowcount"]], p = .65, list = FALSE, times = 1);
     trainDF <- dfWithAggregatedColumn[ splitIndex,];
     testDF  <- dfWithAggregatedColumn[-splitIndex,];
-  }
+  
 
 
   aggregatedColumn <- trainDF[[columnToForecast]]
@@ -1079,7 +1084,7 @@ forecasting <- function(df, temporalDim, futureSeq, columnToForecast, supplied_m
     modelNeurelnet <- function(){
       tryCatch(
         # This is what I want to do:
-        fit.nn <- nnetar(ts_class, repeats = 3)
+        fit.nn <- nnetar(ts_class, repeats = 10)
         ,
         # ... but if an error occurs, tell me what happened:
         error=function(error_message) {
