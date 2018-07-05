@@ -38,7 +38,7 @@ learn.ca = function() {
   })
 }
 
-##################################################################################
+#################################################################################
 #' Default SCORE mechanism of CA datasources
 #'
 #' Reads learnt models and score the datasource
@@ -245,12 +245,32 @@ processCardinalDimsAndForecast = function(df=NULL,temporalDim = NULL,target = NU
         output$df <- mergeCardinalColumns(df = output$df,cardinalFilter = row)
       }
 
+      
+      if(!is.null(output$df)){
+        
+        #append the results to final dataframe
+        if(is.null(df_final)) {
+          df_final <- output$df
+        }else {
+          df_final <- unique(rbind(df_final,output$df))
+        }
+        
+      }
+      
       #append the results to final dataframe
       if(is.null(df_final)) {
         df_final <- output$df
       }else {
         df_final <- unique(rbind(df_final,output$df))
-      }
+      } 
+      
+      
+      # #append the results to final dataframe
+      # if(is.null(df_final)) {
+      #   df_final <- output$df
+      # }else {
+      #   df_final <- unique(rbind(df_final,output$df))
+      # }
 
       #Add the newly added model to modelList
       if(!isSubModelAvailable) {
@@ -479,6 +499,11 @@ autoClassify <- function(df, col2bclassified) {
   #init
   init()
 
+  #remove columns with all NA values
+  DT <- as.data.table(df)
+  df <- as.data.frame (DT[,which(unlist(lapply(DT, function(x)!all(is.na(x))))),with=F])
+  # df <- as.data.frame(DT)
+  
   #store response
   myresponse <- col2bclassified
   #check the data types
@@ -510,7 +535,7 @@ autoClassify <- function(df, col2bclassified) {
       print("listing is done")
       df[,c(a)] <- NULL
     }
-    if(typeof(col2bclassified) == "character"){ #check for response data type and ship with the blackbox
+    if(typeof(levels(col2bclassified))== "character"){ #check for response data type and ship with the blackbox
       print("here")
       y.dat.typ <- "lable"
     }else{
@@ -620,7 +645,7 @@ autoClassify <- function(df, col2bclassified) {
   if(exists("colnames.fac") && is.data.frame(df.imp1.fac)){
     for(q in 1:length(colnames.fac)){
       lev <- levels(df.imp1.fac[[colnames.fac[q]]])
-      if((length(lev)) >=5){
+      if((length(lev)) >=5 || (length(lev)) < 2){
         df.imp1.fac[[colnames.fac[q]]] <- NULL
       }
     }
@@ -749,6 +774,7 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
   }else{
     df.imp1 <- cbind(df.imp, df.char)
   }
+  
   #Convert column with type character to factors
   imp.column.names <- names(df.imp1)
   for(k in 1:length(imp.column.names)){
@@ -760,24 +786,134 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
       print("No character types found")
     }
   }
+  
+  
+  ###copied from learn ###
+  #remove obvious columns. Target.other can take any col name that needs to be removed.
+  attach(df.imp1)
+  target.other <- list("^TARGET_","^INDEX","^ID","^serial_no")
+  for(n in 1:length(imp.column.names)){
+    col.rm <- grep(target.other[n], imp.column.names)
+    
+    if(isTRUE(length(col.rm) != 0)){
+      
+      for(p in 1:length(col.rm)){
+        t1 <- imp.column.names[col.rm[p]]
+        df.imp1[t1] <- NULL
+      }
+    }
+  }
 
+  #########copy end ########
+    
+  
   #get the level and model from the black box
   #blackbox <- model.colnames.lev[1] # They should pass me this
   #mylogit <- unserialize(blackbox$model[1])
   #blackbox.lev <- blackbox[[1]]
   mod <- unserialize(mod.lev.typ[[1]])
-  lev <- length(mod.lev.typ[[2]])
-  typ <- mod.lev.typ[[3]]
+
+  
+  scoreMatrix <- matrix()
+  modelDfColNames <- names(mod$model) 
+  # modelDfColNames <- setdiff(modelDfColNames, modelDfColNames[1])
+  
+  scoreDfColNames <- names(df.imp1)
+  commonColumns <- intersect(modelDfColNames,scoreDfColNames)
+  commonColumns <- insert(commonColumns, ats=1, values=rep("col2bclassified",1)) #this is to match the vector modelDfColNames
+ 
+  
+  scoreMatrix <- df.imp1    
+  #initialize matrices
+  factorColumnMatrix <- matrix()
+  colnames.fac.lst <- NULL
+  imp.column.names <- names(scoreMatrix)
+  
+  matchFactorLevels <- function(scoreMatrix, mod,imp.column.names){
+ 
+    
+    for(p in 1:length(imp.column.names)){
+      if((is.factor(scoreMatrix[[imp.column.names[p]]]))){
+        print("factor")
+        col.fac <- as.data.frame(scoreMatrix[[imp.column.names[p]]])
+        factorColumnMatrix <- cbind(factorColumnMatrix,col.fac)
+        colnames.fac.lst[p] <- imp.column.names[p]
+        
+        colnames.fac.lst <- na.omit(colnames.fac.lst)
+        names(factorColumnMatrix) <- colnames.fac.lst
+
+      }
+    }
+      
+    
+      for(q in 1:length(colnames.fac.lst)){
+        
+        if((is.null(mod$xlevels[[colnames.fac.lst[q]]])) || (is_empty(mod$xlevels[[colnames.fac.lst[q]]]))){
+          
+          next
+          
+        }
+        
+        mod$xlevels[[colnames.fac.lst[q]]] <- mod$xlevels[[colnames.fac.lst[q]]][mod$xlevels[[colnames.fac.lst[q]]] != ""]
+        
+        testLevels <- levels(scoreMatrix[[colnames.fac.lst[q]]])
+        modelLevels <- mod$xlevels[[colnames.fac.lst[q]]]                     
+        
+        if((length(testLevels) != length(modelLevels)) || !identical(testLevels,modelLevels)){
+          
+          xlevels <- mod$xlevels[[colnames.fac.lst[q]]]
+          newLevel <- xlevels[1]
+          replacement <- factor(rep(newLevel, length = nrow(scoreMatrix)),levels = xlevels) 
+          scoreMatrix[[colnames.fac.lst[q]]] <- replacement
+          
+          print("factors replaced")
+          
+        }else{
+    
+        print("No change to factors")
+        
+        scoreMatrix <- df.imp1
+        
+        }
+    # changedFactorResult <- c(scoreMatrix, colnames.fac.lst)
+    
+    return(scoreMatrix)
+        
+      }
+  }
+      
+      if(!is_empty(mod$xlevels)){
+        
+      result <- matchFactorLevels(scoreMatrix, mod,imp.column.names)
+      scoreMatrix <- result[1]
+      
+      common <- names(scoreMatrix)[names(scoreMatrix) %in% names(mod$model)]
+      scoreMatrix[common] <- lapply(common, function(x) {
+      match.fun(paste0("as.", class(mod$model[[x]])))(scoreMatrix[[x]])
+      })
+        
+      }else{
+        
+      scoreMatrix <- df.imp1  
+        
+      }
+
+
+  
+ lev <- length(mod.lev.typ[[2]])
+ typ <- mod.lev.typ[[3]]
+ 
   #Instead of an extra arguement called multinomial, check for the levels for resposne in train model and decide for multinomial
   # lev <- length(levels(as.factor(mylogit$lev)))
   if(lev > 2){
     print("Selecting multinomial")
     print("Posterior cutoff is ignored")
     predictions <- predict(mod, newdata=df.imp1, "class")
-    df.test.save$predictions <- as.integer(predictions)
+    df.test.save$predictions <- (predictions)
   }else{
     print("Selecting binomial")
-    glm_response_scores <- round(predict(mod, df.imp1, type="response"),2)
+    
+     glm_response_scores <- round(predict(mod, scoreMatrix, type="response"),2)
     #get lables
     if(missing(posteriorCutoff)){
       print("Using default posterior cutoff")
@@ -817,23 +953,23 @@ autoForecast <- function (df,temporalDim,columnToForecast,fcastFrequency,supplie
   df <- na.omit(df)
 
   freqNumber <- computeTemporalFreq(df,temporalDim)
+  if(nrow(df) < 10){
+    
+    return(NULL)
+    
+  }else{
+    
+    futureSeq <- futureTemporalDim(df, temporalDim, freqNumber, fcastFrequency)
+    
+    dfWithAggregatedColumn <- aggregateForecastColumn(df,columnToForecast, freqNumber, temporalDim)
+    
+    # if(nrow(dfWithAggregatedColumn) < 10) 
+    #   stop("too few observations, cant proceed with forecasting")
+    
+    forecasting(df, temporalDim, futureSeq, columnToForecast, supplied_model, fcastFrequency, freqNumber);
+  } 
 
-  futureSeq <- futureTemporalDim(df, temporalDim, freqNumber, fcastFrequency)
-
-  dfWithAggregatedColumn <- aggregateForecastColumn(df,columnToForecast, freqNumber, temporalDim)
-
-  if(nrow(dfWithAggregatedColumn) < 10)
-    stop("too few observations, cant proceed with forecasting")
-
-  forecasting(df, temporalDim, futureSeq, columnToForecast, supplied_model, fcastFrequency, freqNumber);
 }
-
-# processtemporal_dim <- function(df, temporaldim){
-#
-#
-#   return(df)
-# }
-
 
 computeTemporalFreq <- function(df,temporalDim) {
 
@@ -1353,6 +1489,7 @@ forecasting <- function(df, temporalDim, futureSeq, columnToForecast, supplied_m
         print("Its linear")
       }else{
         point.preds <- forecast(myforecastModel,h=fcastFrequency)
+        point.preds <- point.preds$mean
         print("Its neural net")
       }
 
