@@ -19,9 +19,8 @@ from re import sub
 import numpy as np
 from json import dumps
 import hashlib
-#import jaydebeapi
-import jpype
-import pymonetdb as monet
+import jaydebeapi
+import pickle
 
 CA_DEFAULT_PAGE_SIZE = 100000
 _caParams = None
@@ -378,9 +377,9 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             
             dsName = dsName + "_" + _caParams.get('TARGET_NAME') + "_"  + _caParams.get('MODEL_GROUP_NAME') + "_" + modelName
             print("dsName:",dsName)
-            carriots_analytics_fact_table_name = hashlib.md5(dsName.encode("UTF-8")).hexdigest()
+            _caParams['carriots_analytics_fact_table_name'] = hashlib.md5(dsName.encode("UTF-8")).hexdigest()
             if(schema is not None):
-                carriots_analytics_fact_table_name = schema + "." + carriots_analytics_fact_table_name
+                 _caParams['carriots_analytics_fact_table_name'] = schema + "." + _caParams['carriots_analytics_fact_table_name']
             
             #First add the target column first
             myDim = dict()
@@ -390,14 +389,14 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             dimLabel = _caParams.get('TARGET_LABEL') + "_" + modelLabel
             myDim['name'] = dimName
             myDim['label'] = dimLabel
-            myDim['supportTable'] = carriots_analytics_fact_table_name
+            myDim['supportTable'] = _caParams['carriots_analytics_fact_table_name']
             myDim['dataType'] = _caParams.get('TARGET_TYPE')
             
             #add this mapping to label2colMap
             label2Col[_caParams.get('TARGET_LABEL')] = dimName
             
             #add the dimension
-            _caNewDims[len(_caNewDims)] = myDim
+            _caNewDims.append(myDim)
             
             #Remove  the target column
             targetColumn = dimName
@@ -416,12 +415,12 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
                 myDim = dict()
                 myDim['name'] = dimName
                 myDim['label'] = dimLabel
-                myDim['supportTable'] = carriots_analytics_fact_table_name
+                myDim['supportTable'] = _caParams['carriots_analytics_fact_table_name']
                 myDim['dataType'] = self.__getDFtoCATypes__(type(df[val]))
                 myDim['base'] = targetColumn
                 
                 #add the dimension
-                _caNewDims[len(_caNewDims)] = myDim
+                _caNewDims.append(myDim)
             
             #changing the dataframe headers back to actual fact table column names
             extraColNames = list()
@@ -433,7 +432,7 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
                         raise Exception("Dataframe has an unexpected column")
                     #Get the extra colNames to omit from table creation
                     if(e in extraColumns):
-                        extraColNames[len(extraColNames)] = colName
+                        extraColNames.append(colName)
                     df.columns.values[i] = colName
             except:
                 print("Error in changing the dataframe headers back to actual factTable column names")
@@ -443,10 +442,10 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             mapd_cursor = jdbc.cursor()
             
             #create table
-            md5Table = self.__createTable__(df,mapd_cursor,colName)
+            md5Table = self.__createTable__(mapd_cursor,df,colName)
             
             #Add the new columns
-            for val in extraColumns:
+            for val in extraColNames:
                 if(val == targetColumn):
                     _type = self.__getColumnType__(_caParams.get('TARGET_TYPE'))
                 else:
@@ -457,6 +456,9 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
                 
             #insert data in to table
             self.__insertData__(mapd_cursor,md5Table,df)
+            
+            #Now add the dimensions to carriots
+            self.__addDimensions__(dims = _caNewDims)
             
         
         def __handleForecastUpdate__(self, df = None, label2Col = None, modelName = None, modelLabel = None):
@@ -497,9 +499,9 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             
             dsName = dsName + "_" + _caParams.get('TARGET_NAME') + "_"  + _caParams.get('MODEL_GROUP_NAME') + "_" + modelName
             print("dsName:",dsName)
-            carriots_analytics_fact_table_name = hashlib.md5(dsName.encode("UTF-8")).hexdigest()
+            _caParams['carriots_analytics_fact_table_name'] = hashlib.md5(dsName.encode("UTF-8")).hexdigest()
             if(schema is not None):
-                carriots_analytics_fact_table_name = schema + "." + carriots_analytics_fact_table_name
+                _caParams['carriots_analytics_fact_table_name'] = schema + "." + _caParams['carriots_analytics_fact_table_name']
             
             #First add the target column first
             myDim = dict()
@@ -510,7 +512,7 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             dimLabel = _caParams.get('TARGET_LABEL') + "_" + modelLabel
             myDim['name'] = dimName
             myDim['label'] = dimLabel
-            myDim['supportTable'] = carriots_analytics_fact_table_name
+            myDim['supportTable'] = _caParams['carriots_analytics_fact_table_name']
             myDim['dataType'] = _caParams.get('TARGET_TYPE')
             myDim["modelName"] = modelName
             myDim["base"] = _caParams.get('TARGET_NAME')
@@ -519,7 +521,7 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             label2Col[_caParams.get('TARGET_LABEL')] = dimName
             
             #add the dimension
-            _caNewDims[len(_caNewDims)] = myDim
+            _caNewDims.append(myDim)
             
             #Remove  the target column
             targetColumn = dimName
@@ -538,12 +540,13 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
                 myDim = dict()
                 myDim['name'] = dimName
                 myDim['label'] = dimLabel
-                myDim['supportTable'] = carriots_analytics_fact_table_name
+                myDim['supportTable'] = _caParams['carriots_analytics_fact_table_name']
                 myDim['dataType'] = self.__getDFtoCATypes__(type(df[val]))
                 myDim['base'] = _caParams.get('TARGET_NAME')
+                myDim['modelName'] = _caParams.get('MODEL_NAME')
                 
                 #add the dimension
-                _caNewDims[len(_caNewDims)] = myDim
+                _caNewDims.append(myDim)
             
              #changing the dataframe headers back to actual fact table column names
             extraColNames = list()
@@ -555,7 +558,7 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
                         raise Exception("Dataframe has an unexpected column")
                     #Get the extra colNames to omit from table creation
                     if(e in extraColumns):
-                        extraColNames[len(extraColNames)] = colName
+                        extraColNames.append(colName)
                     df.columns.values[i] = colName
             except:
                 print("Error in changing the dataframe headers back to actual factTable column names")
@@ -565,10 +568,10 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             mapd_cursor = jdbc.cursor()
             
             #create table
-            md5Table = self.__createTable__(df,mapd_cursor,colName)
+            md5Table = self.__createTable__(mapd_cursor,df,colName)
             
             #Add the new columns
-            for val in extraColumns:
+            for val in extraColNames:
                 if(val == targetColumn):
                     _type = self.__getColumnType__(_caParams.get('TARGET_TYPE'))
                 else:
@@ -579,6 +582,9 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
                 
             #insert data in to table
             self.__insertData__(mapd_cursor,md5Table,df)
+            
+            #Now add the dimensions to carriots
+            self.__addDimensions__(dims = _caNewDims)
         
         def load(self,columns = None, nrows = None):
             
@@ -596,10 +602,10 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
                              else:
                                 columns = _caParams.get('predictors')
                         
-                         if(columns is None):
-                             columns = list()
-                                
-                         if( _caParams.get('REQ_TYPE') == "FORECAST"):
+                             if(columns is None):
+                                 columns = list()                                
+                             
+                             if( _caParams.get('REQ_TYPE') == "FORECAST"):
                                 temporal =  _caParams.get('TEMPORAL_DIM')
                                 forecast =  _caParams.get('TARGET_NAME')
 
@@ -614,7 +620,10 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
                                 #Add the temporal dim as a first element in the list
                                 columns = np.setdiff1d(columns,temporal).tolist()
                                 columns.insert(0,temporal)
-                            
+                             elif(_caParams.get('REQ_TYPE') == "LEARN"):
+                                 targetDim = _caParams.get('TARGET_NAME')
+                                 if(targetDim not in columns):
+                                     columns.append(targetDim)
                                 
                          elif( _caParams.get('REQ_TYPE') == 'SCORE'):
                             columns = list(_ca_modelMap.keys())
@@ -763,9 +772,9 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
                 if(_caParams.get("REQ_TYPE") == "SCORE"):
                     #Get label to column mapping
                     try:
-                        if (_ca_modelMap is not None):
+                        if (_ca_modelMap is None):
                             raise Exception("CA model map not available exiting now")
-                        
+                            
                         label2Col = __getColumn2Label__(_ca_modelMap)
                         isScore = True
                     except:
@@ -790,13 +799,114 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             
             if(isScore):
                 # handle score
-                self.__handleScoreUpdate__(self,df = df, label2Col = label2Col, modelName = modelName, modelLabel = modelLabel)
+                self.__handleScoreUpdate__(df = df, label2Col = label2Col, modelName = modelName, modelLabel = modelLabel)
             elif(isForecast):
                 #handleForecast
-                self.__handleForecastUpdate(self,df = df, label2Col = label2Col, modelName = modelName, modelLabel = modelLabel)
+                self.__handleForecastUpdate(df = df, label2Col = label2Col, modelName = modelName, modelLabel = modelLabel)
             else:
                 #handle simulate
-                self.__handleSimulateUpdate__(df = df, label2Col = label2Col, _type = _type)           
+                self.__handleSimulateUpdate__(df = df, label2Col = label2Col, _type = _type)
+        
+        def addModel(self, model=None, label = None, description = None, predictors = None,
+                     params = None, metrics = None):
+            if(model is None):
+                print("No model provided to register")
+                return False
+            
+            if(_caParams is None):
+                raise Exception("Environment not set properly, error!!!")
+                
+            myModel = dict()
+            myModel['label'] = label
+            myModel['description'] = description
+            myModel['predictors'] = predictors
+            myModel['params'] = params
+            
+            if(model is not None):
+                _tempModel = pickle.dumps(model)
+                myModel['model'] = _tempModel.hex()
+            
+            if(metrics is not None):
+                myModel['metrics'] = metrics.to_json(orient='split')
+            
+            params = {}
+            params['dstoken'] = token
+            params['advancedModelGroup'] =  _caParams.get('MODEL_GROUP_NAME')
+            params['advancedModel'] = dumps(myModel)              
+                
+            headerParams = {}
+            headerParams['X-CA-apiKey'] = apikey
+            
+            res = None
+            
+            try:
+                res = __doHttpCall__(url,"addModel",params,headerParams,path='scriptEngine')
+                if(res['success'] != 'true'):
+                    raise Exception("Unable to add the model, Exiting!!!")
+            except:
+                print("Error in datasource connect info")
+                raise Exception("Error in datasource connect info")
+            
+        def getModels(self):
+            if(_caParams is None):
+                raise Exception("Environment not set properly, error!!!")
+                
+            if(_caParams.get('MODEL_GROUP_NAME') is None):
+                print("No modelGroup, unable to get the models")
+                return False           
+            
+            models = []
+            params = {}
+            params['dstoken'] = token
+            params['advancedModelGroup'] =  _caParams.get('MODEL_GROUP_NAME')
+            
+            if(_caParams.get('MODELS_SELECTED') is not None):
+                params['advancedModel'] = _caParams.get('MODELS_SELECTED')              
+                
+            headerParams = {}
+            headerParams['X-CA-apiKey'] = apikey
+            
+            res = None
+            
+            try:
+                res = __doHttpCall__(url,"modelInfo",params,headerParams,path='scriptEngine')
+                if(res['success'] != 'true'):
+                    raise Exception("Unable to retrieve the model, Exiting!!!")
+                else:
+                    if(res['model_data'] != None):
+                        models = res['model_data']['model']
+                    else:
+                        raise Exception("Unable to retrieve the model, Exiting!!!")
+            except:
+                print("Error in datasource connect info")
+                raise Exception("Error in datasource connect info")
+            
+            return models
+        
+        def __addDimensions__(self, dims = None):
+            if(dims is None):
+                print("No dims to add")
+                return False
+            
+            params = {}
+            params['dstoken'] = token
+            params['advancedModelGroup'] = getParam('MODEL_GROUP_NAME')
+            params['dim_type'] = getParam('REQ_TYPE')
+            _dims = {}
+            _dims['dims'] = dims
+            params['dim'] = dumps(_dims)            
+            
+            headerParams = {}
+            headerParams['X-CA-apiKey'] = apikey
+            
+            res = None            
+            try:
+                res = __doHttpCall__(url,"addDim",params,headerParams,path='scriptEngine')
+                if(res['success'] != 'true'):
+                    raise Exception("Unable to add the dimensions, Exiting!!!")
+            except:
+                print("Error in datasource connect info")
+                raise Exception("Error in datasource connect info")
     
     # //////////////////////////////////////////////////////
     # Call the CA REST API to get the connection data
@@ -804,6 +914,7 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
     
     #check URL,token and API key set in the the App
     global _caParams
+    global _ca_modelMap
     if (_caParams is not None):
         if(url is None):
             url = _caParams.get('URL')
@@ -845,10 +956,11 @@ def cleanUpParams():
     _ca_modelMap = None
     
 
-def setcaModelMap(modelMap = None):
+def setCAModelMap(modelMap = None):
     global _ca_modelMap
     if(modelMap is not None):
         _ca_modelMap = modelMap
+
     
 def  __getDatasourceConnection__(baseUrl,token,apikey,tunnelHost = None):
     data = __getDatasourceMetaData__(baseUrl,token,apikey)
@@ -871,21 +983,13 @@ def  __getDatasourceConnection__(baseUrl,token,apikey,tunnelHost = None):
         password = str(password.decode('utf-8'))
         
         driver_path = path.dirname(modules['caDB'].__file__) + sep +'extdata'+ sep + jdbcDetails['driver']
+     
         #driver_path = getcwd() + sep +'extdata'+ sep + jdbcDetails['driver']
-        print(driver_path)
-        if(jpype.isJVMStarted()):
-            print("JVM already started")
-            jpype.detachThreadFromJVM()
-            print("successfully detached")
-        else:
-            print("JVM not started")
-            #jpype.startJVM(jpype.getDefaultJVMPath(),"-Djava.class.path=" + driver_path)
-            #jpype.attachThreadToJVM()
-            
+        #conn = jdbc.connect(url = jdbcDetails['connString'],user=connect_data['username'],password= password)
         
-        conn = monet.connect(username=connect_data['username'], password=password, hostname=connect_data['hostname'], database=connect_data['dbName'])
+        #conn = jdbc.connect(username=connect_data['username'], password=password, hostname=connect_data['hostname'], database=connect_data['dbName'])
         #conn = jaydebeapi.connect(jclassname=jdbcDetails['driveClass'], url=jdbcDetails['connString'], driver_args=[connect_data['username'],password], jars=[driver_path])
-        #conn = jaydebeapi.connect(jclassname=jdbcDetails['driveClass'], url = jdbcDetails['connString'], driver_args=[connect_data['username'],password], jars=[driver_path])
+        conn = jaydebeapi.connect(jclassname=jdbcDetails['driveClass'], url = jdbcDetails['connString'], driver_args=[connect_data['username'],password], jars=[driver_path])
         
         print("after connection")
         ftable = connect_data['ftable']
@@ -947,14 +1051,19 @@ def __getDatasourceMetaData__(baseUrl,token,apikey):
     return res
             
 
-def __doHttpCall__(baseUrl,identifier,queryParams,headerParams):
+def __doHttpCall__(baseUrl,identifier,queryParams,headerParams,path=None):
     if baseUrl == None:
         raise Exception('Invalid base url')
     
     if baseUrl[-1:] == '/':
         baseUrl = baseUrl[:-1]
     
-    baseUrl = baseUrl + '/datasource.do?action='+ identifier
+    if(path is None):
+        path = '/datasource.do?action='
+    else:
+        path = '/' + path +'.do?action='
+        
+    baseUrl = baseUrl + path + identifier
     
     res = post(baseUrl,data = queryParams,headers= headerParams, verify=False)
     

@@ -759,6 +759,12 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
                   #Add the temporal dim as a first element in the list
                   columns <- columns[! columns %in% temporal]
                   columns <- c(temporal,columns)
+                } 
+                else if(.caParams[["REQ_TYPE"]] == "LEARN"){
+                  targetDim <- .caParams[["TARGET_NAME"]]
+                  #Add the TARGET_DIM as well to the data frame
+                  if(!(targetDim %in% columns))
+                    columns[[length(columns)+1]] <- targetDim
                 }
 
               }
