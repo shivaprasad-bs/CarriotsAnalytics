@@ -815,89 +815,51 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
 
   
   scoreMatrix <- matrix()
-  modelDfColNames <- names(mod$model) 
-  # modelDfColNames <- setdiff(modelDfColNames, modelDfColNames[1])
+  modelFactorNames <- names(mod$xlevels)
   
-  scoreDfColNames <- names(df.imp1)
-  commonColumns <- intersect(modelDfColNames,scoreDfColNames)
-  commonColumns <- insert(commonColumns, ats=1, values=rep("col2bclassified",1)) #this is to match the vector modelDfColNames
- 
   
-  scoreMatrix <- df.imp1    
-  #initialize matrices
-  factorColumnMatrix <- matrix()
-  colnames.fac.lst <- NULL
-  imp.column.names <- names(scoreMatrix)
-  
-  matchFactorLevels <- function(scoreMatrix, mod,imp.column.names){
- 
+  matchFactorLevels <- function(df.imp1,mod,modelFactorNames){
     
-    for(p in 1:length(imp.column.names)){
-      if((is.factor(scoreMatrix[[imp.column.names[p]]]))){
-        print("factor")
-        col.fac <- as.data.frame(scoreMatrix[[imp.column.names[p]]])
-        factorColumnMatrix <- cbind(factorColumnMatrix,col.fac)
-        colnames.fac.lst[p] <- imp.column.names[p]
-        
-        colnames.fac.lst <- na.omit(colnames.fac.lst)
-        names(factorColumnMatrix) <- colnames.fac.lst
-
-      }
-    }
+    
+    for(i in 1:length(modelFactorNames)){
       
-    
-      for(q in 1:length(colnames.fac.lst)){
-        
-        if((is.null(mod$xlevels[[colnames.fac.lst[q]]])) || (is_empty(mod$xlevels[[colnames.fac.lst[q]]]))){
-          
-          next
-          
-        }
-        
-        mod$xlevels[[colnames.fac.lst[q]]] <- mod$xlevels[[colnames.fac.lst[q]]][mod$xlevels[[colnames.fac.lst[q]]] != ""]
-        
-        testLevels <- levels(scoreMatrix[[colnames.fac.lst[q]]])
-        modelLevels <- mod$xlevels[[colnames.fac.lst[q]]]                     
-        
-        if((length(testLevels) != length(modelLevels)) || !identical(testLevels,modelLevels)){
-          
-          xlevels <- mod$xlevels[[colnames.fac.lst[q]]]
-          newLevel <- xlevels[1]
-          replacement <- factor(rep(newLevel, length = nrow(scoreMatrix)),levels = xlevels) 
-          scoreMatrix[[colnames.fac.lst[q]]] <- replacement
-          
-          print("factors replaced")
-          
-        }else{
-    
-        print("No change to factors")
-        
-        scoreMatrix <- df.imp1
-        
-        }
-    # changedFactorResult <- c(scoreMatrix, colnames.fac.lst)
-    
-    return(scoreMatrix)
-        
-      }
-  }
+      modelLevels <- mod$xlevels[[i]]
+      testLevels <- levels(df.imp1[[modelFactorNames[i]]])  
       
-      if(!is_empty(mod$xlevels)){
+      if(!identical(modelLevels,testLevels)){
         
-      result <- matchFactorLevels(scoreMatrix, mod,imp.column.names)
-      scoreMatrix <- result[1]
-      
-      common <- names(scoreMatrix)[names(scoreMatrix) %in% names(mod$model)]
-      scoreMatrix[common] <- lapply(common, function(x) {
-      match.fun(paste0("as.", class(mod$model[[x]])))(scoreMatrix[[x]])
-      })
+        xlevels <- mod$xlevels[[modelFactorNames[i]]]
+        newLevel <- xlevels[1]
+        replacement <- factor(rep(newLevel, length = nrow(df.imp1)),levels = xlevels) 
+        df.imp1[[modelFactorNames[i]]] <- replacement
+        
+        print("factors replaced")
+        print(modelFactorNames[i])
         
       }else{
         
-      scoreMatrix <- df.imp1  
+        print("No change to factors")
+        df.imp1 <- df.imp1
         
       }
-
+      
+    }
+    
+    return(df.imp1)
+    
+  }
+  
+  
+  if(!is_empty(mod$xlevels)){
+    
+    scoreMatrix <- matchFactorLevels(df.imp1, mod,modelFactorNames)
+    
+    common <- names(scoreMatrix)[names(scoreMatrix) %in% names(mod$model)]
+    scoreMatrix[common] <- lapply(common, function(x) {
+      match.fun(paste0("as.", class(mod$model[[x]])))(scoreMatrix[[x]])
+    })
+    
+  }
 
   
  lev <- length(mod.lev.typ[[2]])
