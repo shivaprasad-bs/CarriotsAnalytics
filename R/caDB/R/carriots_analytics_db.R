@@ -336,35 +336,23 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         extraColumns <- setdiff(newColumns,oldColumns)
 
         #If there are more than 1 extra column added- throw error
-        if(length(extraColumns) > 1)
-          stop("More than 1 column added to the dataframe/ headers mismatch in new dataframe - exiting here")
-
-        # newly added column in the dataframe
-        colName <- extraColumns[[1]]
-
-        #check whether the type is passed, else default it to string
-        if(is.null(type))
-          type <- self$dataTypes$STRING
-
-        if(is.null(colName) || is.na(colName))
-          stop("Additional column added is empty or invalid")
+        #if(length(extraColumns) > 1)
+          #stop("More than 1 column added to the dataframe/ headers mismatch in new dataframe - exiting here")
+        
+        #check whether the new data frame has the derived dimension
+        if(!(carriots.analytics.derived_dim_name %in% extraColumns))
+          stop("derived dimension doesnt exixts in new data frame")
+        
+        colName <- carriots.analytics.derived_dim_name
+        
         #changing the dataframe headers back to actual factTable column names
         result = tryCatch({
           orgNames <- names(df)
           for (i in 1:length(orgNames)) {
-            if (orgNames[i] != colName) {
-              label <- label2Col[[orgNames[i]]]
-              if (is.null(label))
-                stop("Dataframe has an unexpected column")
+            label <- label2Col[[orgNames[i]]]
+            if (!is.null(label)) {
               names(df)[i] <- label
               print(paste("label:",label))
-            } else {
-              #This setting should have been done from the application
-              if (exists(paste("carriots.analytics.derived_dim_name"))) {
-                names(df)[i] <- carriots.analytics.derived_dim_name
-                colName <- carriots.analytics.derived_dim_name
-              }
-
             }
           }
         },
@@ -377,7 +365,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         #create table
         md5Table <- NULL
         result = tryCatch({
-          md5Table <- private$createTable(df, colName, type)
+          md5Table <- private$createTable(df, extraColumns, type)
         },
         error = function(err) {
           print("Error in creating table")
@@ -385,8 +373,34 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           stop(msg)
         })
 
-        #Add a column first
-        private$addColumn(md5Table, name = colName, type = type)
+        #Add all extra columns
+        for(i in 1:length(extraColumns)) {
+          colType <- private$getColumnType(private$getDFtoCATypes(class(df[extraColumns[i]])))
+          if(extraColumns[i] == colName) {
+            #check whether the type is passed for derived dimName, else default it to string
+            if(!is.null(type))
+              colType <- type
+          }
+          
+          dim_name <- extraColumns[i]
+          if(exists(".caNewDims")) {
+            myDim <- list()
+            if(!grepl("^[a-zA-Z0-9\\s\\(\\)_/]+$",dim_name))
+              dim_name = digest::digest(dim_name,"md5",serialize = FALSE)
+            myDim[["name"]] <- dim_name
+            myDim[["label"]] <- extraColumns[i]
+            myDim[["datasource"]] <- private$conn_data$factTable
+            myDim[["supportTable"]] <- md5Table
+            myDim[["dataType"]] <- colType
+            
+            if(extraColumns[i] != colName)
+              myDim[["base"]] <- colName
+            
+            .caNewDims[[i]] <<- myDim
+          }
+          
+          private$addColumn(md5Table, name = dim_name, type = colType)
+        }
 
         #insert in to new table
         result = tryCatch({
@@ -397,17 +411,6 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
           msg = paste("Error in INSERT TABLE:",err)
           stop(msg)
         })
-
-        #Add newly created dimension
-        if(exists(".caNewDims")) {
-          myDim <- list()
-          myDim[["name"]] <- carriots.analytics.derived_dim_name
-          myDim[["datasource"]] <- private$conn_data$factTable
-          myDim[["supportTable"]] <- md5Table
-
-          .caNewDims[[1]] <<- myDim
-        }
-
       },
       handleScoreUpdate = function(df = NULL,label2Col = NULL,modelName = NULL, modelLabel = NULL) {
 

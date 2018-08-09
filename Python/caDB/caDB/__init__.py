@@ -21,6 +21,7 @@ from json import dumps
 import hashlib
 import jaydebeapi
 import pickle
+import re
 
 CA_DEFAULT_PAGE_SIZE = 100000
 _caParams = None
@@ -210,14 +211,14 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             
             return df
                 
-        def __getDFtoCATypes__(_type = None):
+        def __getDFtoCATypes__(self,_type = None):
             caType = 1
             if(_type is not None):
                 if(_type == np.int64):
                     caType = 3
                 elif(_type == np.float64):
                     caType = 4
-                elif(_type == "Date"):
+                elif(_type is "Date"):
                     caType = 5
                 elif(_type == np.datetime64):
                     caType = 7
@@ -278,35 +279,28 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             extraColumns = np.setdiff1d(newColumns,oldColumns).tolist()
             
             #if there are more than 1 extra column added - throw error
-            if(len(extraColumns) > 1):
-                raise Exception("More than 1 column added to the dataframe/ headers mismatch in new dataframe - exiting here")
-                
-            #newly added column in the dataframe
-            colName = extraColumns[0]
+            #if(len(extraColumns) > 1):
+                #raise Exception("More than 1 column added to the dataframe/ headers mismatch in new dataframe - exiting here")
+            
+            #check whether dataframe has the actual derived dimension
+            derv_name = None
+            if (getParam('carriots_analytics_derived_dim_name') is not None):
+                derv_name = getParam('carriots_analytics_derived_dim_name')
+            else:
+                raise Exception("derived dimension doesnt exixts in new data frame")
             
             #check whether the type is passed, else default it to string
             if(_type is None):
                 _type = self.dataTypes['STRING']
-            
-            if(colName is None):
-                raise Exception("Additional column added is empty or invalid")
-            
+
             #changing the dataframe headers back to actual factables column names
             try:
                 orgNames = list(df.keys())
                 for i,e in enumerate(orgNames):
-                    if(e != colName):
+                    if(e in label2Col.keys()):
                         label = label2Col[e]
-                        if(label is None):
-                            raise Exception("Dataframe has unexpected column")
                         df.columns.values[i] = label
                         print("label:",label)
-                    else:
-                          #This setting should have been done from the application
-                          if (getParam('carriots_analytics_derived_dim_name') is not None):
-                              derv_name = getParam('carriots_analytics_derived_dim_name')
-                              df.columns.values[i] = derv_name
-                              colName = derv_name
             except:
                  print("Error in changing the dataframe headers back to actual factTable column names")
                  raise Exception("Error in changing headers of DF")
@@ -315,27 +309,40 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             mapd_cursor = jdbc.cursor()
             #create table
             md5Table = None
-            md5Table = self.__createTable__(mapd_cursor,df,colName)
+            md5Table = self.__createTable__(mapd_cursor,df,extraColumns)
             
-            #Add a column first
-            self.__addColumn__(mapd_cursor,md5Table,name = colName, _type = _type)
+            _caNewDims = list()
+            #Add all extra columns
+            for i,e in enumerate(extraColumns):
+                colType = self.__getDFtoCATypes__(df[e].dtype)
+                if(e == derv_name):
+                    #check whether the type is passed for derived dimName, else default it to string
+                    if(_type is not None):
+                        colType = _type
+                dim_name = e
+                #Add newly created dimensions
+                myDim = dict()
+                #regexp = re.compile('^[a-zA-Z0-9\\s\\(\\)_/]+$')
+                #if(regexp.search(dim_name)):
+                    #dim_name = hashlib.md5(e.encode("UTF-8")).hexdigest()
+                myDim['name'] = dim_name
+                myDim['label'] = e
+                myDim['datasource'] = self.__conn_data__.factTable
+                myDim['supportTable'] = md5Table
+                myDim['dataType'] = colType
+                
+                if(e is not derv_name):
+                    myDim['base'] = derv_name
+                
+                _caNewDims.append(myDim)
+                
+                self.__addColumn__(mapd_cursor,md5Table,name = dim_name, _type = self.__getColumnType__(colType))
             
             #insert data in to table
             self.__insertData__(mapd_cursor,md5Table,df)
             
-            global _caNewDims
-            #intialize the placeholder for new Dims
-            if(_caNewDims is None):
-                _caNewDims = list()
-                
-            #Add newly created dimensions
-            if(_caNewDims is not None):
-                myDim = dict()
-                myDim['name'] = getParam('carriots_analytics_derived_dim_name')
-                myDim['datasource'] = self.__conn_data__.factTable
-                myDim['supportTable'] = md5Table
-                
-                _caNewDims.append(myDim)         
+            #Add dimensions
+            self.__addDimensions__(_caNewDims)
         
         def __handleScoreUpdate__(self, df = None, label2Col = None, modelName = None, modelLabel = None):
             
