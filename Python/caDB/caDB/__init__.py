@@ -96,10 +96,6 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             colNames = list(df.columns.values)
             print(colNames)
             colNames = np.setdiff1d(colNames,extraColumns).tolist()
-                
-            
-            if(not(set(colNames) < set(self.__getColumnNames__()))):
-                raise Exception("Data Frame has more than one new column compared to fact table")
             
             query = "CREATE TABLE "
             query = query + _md5table
