@@ -1100,7 +1100,7 @@ def __getDriverDetails__(connect_data,tunnelHost):
         jdbcDetails['driver'] = "monetdb-jdbc-2.28.jar"
         jdbcDetails['connString'] = "jdbc:monetdb://" + host_port + "/" + connect_data['dbName']
         jdbcDetails['quot'] = "\""
-    elif(engineType.upper() == "POSTGRESQL" or engineType.upper() == "REDSHIFT"):
+    elif(engineType.upper() == "POSTGRESQL" or engineType.upper() == "REDSHIFT" or engineType.upper() == "TIMESCALEDB"):
         jdbcDetails['driveClass'] = "org.postgresql.Driver"
         jdbcDetails['driver'] = "postgresql-9.2-1002.jdbc4.jar"
         jdbcDetails['connString'] = "jdbc:postgresql://" + host_port + "/" + connect_data['dbName']

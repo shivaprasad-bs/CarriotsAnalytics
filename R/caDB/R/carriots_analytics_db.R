@@ -1392,7 +1392,7 @@ getDriverDetails <- function(connect_data,tunnelHost) {
     jdbcDetails$quot <- "`"
 
   } else if (toupper(engineType) == "POSTGRESQL" ||
-             toupper(engineType) == "REDSHIFT") {
+             toupper(engineType) == "REDSHIFT" || toupper(engineType) == "TIMESCALEDB") {
     jdbcDetails$driverClass <- "org.postgresql.Driver"
     jdbcDetails$driver <- "postgresql-9.2-1002.jdbc4.jar"
     jdbcDetails$connString <-
