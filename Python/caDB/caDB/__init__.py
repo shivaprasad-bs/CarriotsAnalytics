@@ -878,6 +878,12 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
                 else:
                     if(res['model_data'] != None):
                         models = res['model_data']['model']
+                        if(models != None):
+                            for i in range(len(models)):
+                                #deserialize the model
+                                if(models[i]['model']!= None):
+                                    model_bytes = bytes.fromhex(models[i]['model'])
+                                    models[i]['model'] = pickle.loads(model_bytes)
                     else:
                         raise Exception("Unable to retrieve the model, Exiting!!!")
             except:
