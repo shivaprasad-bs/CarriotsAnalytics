@@ -407,7 +407,7 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             
             #prepare the new column now
             for val in newColumns:
-                dimName =  _caParams.get('TARGET_NAME') + "_"  + _caParams.get('MODEL_GROUP_NAME') + "_" + _caParams.get('MODEL_NAME')
+                dimName =  _caParams.get('TARGET_NAME') + "_"  + _caParams.get('MODEL_GROUP_NAME') + "_" + modelName + "_" + val
                 print(dimName)
                 dimName = "0x_" + hashlib.md5(dimName.encode("UTF-8")).hexdigest()
                 dimLabel = val + "_" + modelLabel
@@ -436,7 +436,7 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
                     #Get the extra colNames to omit from table creation
                     if(e in extraColumns):
                         extraColNames.append(colName)
-                    df.columns.values[i] = colName
+                    df = df.rename(columns={df.columns.tolist()[i]:colName})
             except:
                 print("Error in changing the dataframe headers back to actual factTable column names")
                 raise Exception("Error in changing the dataframe headers")
@@ -445,7 +445,7 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             mapd_cursor = jdbc.cursor()
             
             #create table
-            md5Table = self.__createTable__(mapd_cursor,df,colName)
+            md5Table = self.__createTable__(mapd_cursor,df,extraColNames)
             
             #Add the new columns
             for val in extraColNames:
@@ -532,7 +532,7 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             
             #prepare the new column now
             for val in newColumns:
-                dimName =  _caParams.get('TARGET_NAME') + "_"  + _caParams.get('MODEL_GROUP_NAME') + "_" + _caParams.get('MODEL_NAME')
+                dimName =  _caParams.get('TARGET_NAME') + "_"  + _caParams.get('MODEL_GROUP_NAME') + "_" + modelName + "_" + val
                 print(dimName)
                 dimName = "0x_" + hashlib.md5(dimName.encode("UTF-8")).hexdigest()
                 dimLabel = val + "_" + modelLabel
@@ -562,7 +562,7 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
                     #Get the extra colNames to omit from table creation
                     if(e in extraColumns):
                         extraColNames.append(colName)
-                    df.columns.values[i] = colName
+                    df = df.rename(columns={df.columns.tolist()[i]:colName})
             except:
                 print("Error in changing the dataframe headers back to actual factTable column names")
                 raise Exception("Error in changing the dataframe headers")
@@ -864,7 +864,7 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             params['advancedModelGroup'] =  _caParams.get('MODEL_GROUP_NAME')
             
             if(_caParams.get('MODELS_SELECTED') is not None):
-                params['advancedModel'] = _caParams.get('MODELS_SELECTED')              
+                params['advancedModel'] = dumps(_caParams.get('MODELS_SELECTED'))              
                 
             headerParams = {}
             headerParams['X-CA-apiKey'] = apikey

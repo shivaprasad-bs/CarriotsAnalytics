@@ -479,7 +479,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         #prepare the new columns now
         for(val in newColumns) {
           dimName = paste(.caParams$TARGET_NAME,.caParams$MODEL_GROUP_NAME,
-                          .caParams$MODEL_NAME,sep = "_")
+                          .caParams$MODEL_NAME,val,sep = "_")
           print(dimName)
           dimName = paste("0x",digest::digest(dimName,"md5",serialize = FALSE),sep="_")
 
@@ -622,7 +622,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         #prepare the new columns now
         for(val in newColumns) {
           dimName = paste(.caParams$TARGET_NAME,.caParams$MODEL_GROUP_NAME,
-                          .caParams$MODEL_NAME,.caParams$TEMPORAL_DIM,.caParams$FORECAST_STEP,sep = "_")
+                          .caParams$MODEL_NAME,.caParams$TEMPORAL_DIM,.caParams$FORECAST_STEP,val,sep = "_")
           print(dimName)
           dimName = paste("0x",digest::digest(dimName,"md5",serialize = FALSE),sep="_")
 

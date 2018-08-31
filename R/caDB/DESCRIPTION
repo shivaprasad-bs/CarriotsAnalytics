@@ -1,6 +1,6 @@
 Package: caDB
 Title: R Library for Carriots Analytics
-Version: 1.0.0
+Version: 1.0.1
 Authors@R: person("Aravind", "S", email = "aravind.reddy@altair.com", role = c("aut", "cre"))
 Description: Gets the connection details of the datasource by connecting to the CA server and performs DDL and DML operations on the datasource
 Depends: R (>= 3.4.0)
