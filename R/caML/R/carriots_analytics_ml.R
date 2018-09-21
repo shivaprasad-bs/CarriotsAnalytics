@@ -504,6 +504,8 @@ autoClassify <- function(df, col2bclassified) {
   df <- as.data.frame (DT[,which(unlist(lapply(DT, function(x)!all(is.na(x))))),with=F])
   # df <- as.data.frame(DT)
   
+  attach(df)
+ 
   #store response
   myresponse <- col2bclassified
   #check the data types
@@ -674,59 +676,538 @@ autoClassify <- function(df, col2bclassified) {
   df.imp1.lev5.num$col2bclassified <- col2bclassified
   df.imp1.lev5.num$col2bclassified <- as.factor(df.imp1.lev5.num$col2bclassified) #make target a factor
   fac.lev <- levels(df.imp1.lev5.num$col2bclassified)
+  
+  trainLevelNames <- names(df.imp1.fac)
 
+  if(length(col2bclassified) > 10){
+    df.imp1.lev5.num$rowcount <- 1:nrow(df.imp1.lev5.num);
+    set.seed(1234);
+    splitIndex <- caret::createDataPartition(df.imp1.lev5.num[["rowcount"]], p = .65, list = FALSE, times = 1);
+    trainDF <- df.imp1.lev5.num[ splitIndex,];
+    testDF  <- df.imp1.lev5.num[-splitIndex,];
+  }else{
+    
+    stop("too few observations to run classification")
+    
+  }  
+  
+  trainDF$rowcount <- NULL
+  testDF$rowcount <- NULL
+  df.imp1.lev5.num$rowcount <- NULL
+  
   if(length(fac.lev) > 2){
+    start <- Sys.time() #start the counter
+    classes <- "multiClassSummary"
     print("Iam multi")
     if(nrow(df.imp1.lev5.num) < 50000){
-      mylogit <- multinom(col2bclassified ~ ., data = df.imp1.lev5.num)
+      mylogit <- multinom(col2bclassified ~ ., data = trainDF) 
     }
     if(nrow(df.imp1.lev5.num) > 50000){
-      mylogit <- multinom(col2bclassified ~ ., data = df.imp1.lev5.num,maxit = 20)
+      mylogit <- multinom(col2bclassified ~ ., data = trainDF,maxit = 20)
     }
+    
+    # mylogit <- serialize(mylogit,NULL)
+    bestModel <- mylogit
+    
   }else{
+    
+    classes <- "twoClassSummary"
+    
     print("I am not multi")
-    mylogit <- glm(col2bclassified ~ ., data = df.imp1.lev5.num,family = binomial(link="logit"), x=TRUE)
+    # mylogit <- glm(col2bclassified ~ ., data = df.imp1.lev5.num,family = binomial(link="logit"), x=TRUE)
+    
+  #caret wants labels only  
+  convertToZeroAndOne <-  function(trainDF){
+    
+    if(!is.na(as.integer(levels(trainDF$col2bclassified)[1]))){ #converting 1 and 0 to yes and no
+    
+      trainDF$col2bclassified <- ifelse(trainDF$col2bclassified==1,'yes','no')
+      trainDF$col2bclassified <- as.factor(trainDF$col2bclassified)
+      levels(trainDF$col2bclassified) <- make.names(levels(factor(trainDF$col2bclassified)))
+      
+    }
+      
+    return(trainDF)
+    
   }
 
+  trainDF <- convertToZeroAndOne(trainDF)
+  testDF <- convertToZeroAndOne(testDF)
+  
+  #remove column with all NA. Without this all caret model will print lists and fails
+  removeColumnWithAllNA <- function(df){
+    
+    df <- Filter(function(x)!all(is.na(x)), df)
+    
+  }
+  
+  trainDF <- removeColumnWithAllNA(trainDF)
+  testDF <- removeColumnWithAllNA(testDF)
+    
+    
+    
+    objControl <- trainControl(method = "repeatedcv", 
+                               number = 3, 
+                               repeats = 3, 
+                               classProbs = TRUE, 
+                               # summaryFunction = classes,
+                               savePredictions = T)
+    tg <- expand.grid(layer1 = 10, layer2 =0, layer3=0)
+    
+    
+    start <- Sys.time() #start the counter
+    
+    modelglm <- function(){
+      tryCatch(
+        # This is what I want to do:
+        fit.logit<- train(col2bclassified ~ .,data=trainDF, method="glm", metric="Accuracy", trControl=objControl, prox=F)
+        ,
+        # ... but if an error occurs, tell me what happened:
+        error=function(error_message) {
+          print("And below is the error message from R:")
+          print(error_message)
+          return(NaN)
+        }
+      )
+    }
+
+    fit.logit <- modelglm()
+
+    modelnnet <- function(){
+      tryCatch(
+        # This is what I want to do:
+
+        fit.nnet<- train(col2bclassified ~ .,data=trainDF, method="nnet", metric="Accuracy", trControl=objControl)
+        ,
+        # ... but if an error occurs, tell me what happened:
+        error=function(error_message) {
+          print("And below is the error message from R:")
+          print(error_message)
+          return(NaN)
+        }
+      )
+    }
+
+    fit.nnet <- modelnnet()
+
+    modelgbm  <- function(){
+      tryCatch(
+        # This is what I want to do:
+        fit.gbm <- train(col2bclassified ~ .,data=trainDF, method="gbm", metric="Accuracy", trControl=objControl)
+        ,
+        # ... but if an error occurs, tell me what happened:
+        error=function(error_message) {
+          print("And below is the error message from R:")
+          print(error_message)
+          return(NaN)
+        }
+      )
+    }
+
+    fit.gbm <- modelgbm()
+
+
+    modelknn <- function(){
+      tryCatch(
+        # This is what I want to do:
+        fit.knn <- train(col2bclassified ~ .,data=trainDF, method="knn", metric="Accuracy", trControl=objControl)
+        ,
+        # ... but if an error occurs, tell me what happened:
+        error=function(error_message) {
+          print("And below is the error message from R:")
+          print(error_message)
+          return(NaN)
+        }
+      )
+    }
+
+    fit.knn <- modelknn()
+
+    modelnaive_bayes <- function(){
+      tryCatch(
+        # This is what I want to do:
+        fit.naive_bayes <- train(col2bclassified ~ .,data=trainDF, method="naive_bayes", metric="Accuracy", trControl=objControl,type="raw")
+        ,
+        # ... but if an error occurs, tell me what happened:
+        error=function(error_message) {
+          print("And below is the error message from R:")
+          print(error_message)
+          return(NaN)
+        }
+      )
+    }
+
+    fit.naive_bayes <- modelnaive_bayes()
+
+modelBaseLogisticRegression <- function(){
+  tryCatch(
+# This is what I want to do:
+    fit.baseLogisticRegression <- glm(col2bclassified ~ ., data = trainDF,family = binomial(link="logit"), x=TRUE,
+                                      control = list(maxit = 50))
+    ,
+    # ... but if an error occurs, tell me what happened:
+    error=function(error_message) {
+      print("And below is the error message from R:")
+      print(error_message)
+      return(NaN)
+    }
+  )
+}
+
+fit.baseLogisticRegression <- modelBaseLogisticRegression()
+
+  } #end brace for else clause - binomial models built under else clause
+
+
+
+  if(exists("fit.logit") && (class(fit.logit) == "train")){
+
+    predictions.logit.insample <- predict(fit.logit, newdata=testDF,type='prob')
+
+    #for confusion matrix
+    predictions.logit.insample.Forconfusion <- predict(fit.logit, newdata=testDF)
+    logitConfusion <- confusionMatrix((testDF[,"col2bclassified"]),predictions.logit.insample.Forconfusion)
+    logitConfusion <- logitConfusion$table
+    
+    #for AUC
+    
+    postResample(pred=predictions.logit.insample[[2]], obs=ifelse(testDF[,"col2bclassified"]=='yes',1,0))
+    auc.logit <- pROC::roc((testDF[,"col2bclassified"]), predictions.logit.insample[[2]])
+    print(auc.logit$auc)
+
+  }else{
+
+    auc.logit <- NA
+    auc.logit$auc <- NA
+    #auc.logit <- NA
+    pass <- 0
+    logitConfusion <- NA
+
+  }
+
+
+  if(exists("fit.nnet") && (class(fit.nnet) == "train")){
+
+    predictions.nnet.insample <- predict(fit.nnet, newdata=testDF,type='prob')
+    
+    #for confusion matrix
+    predictions.nnet.insample.Forconfusion <- predict(fit.nnet, newdata=testDF)
+    nnetConfusion <- confusionMatrix((testDF[,"col2bclassified"]),predictions.nnet.insample.Forconfusion)
+    nnetConfusion <- nnetConfusion$table
+    
+    #for AUC
+    postResample(pred=predictions.nnet.insample[[2]], obs=ifelse(testDF[,"col2bclassified"]=='yes',1,0))
+    auc.nnet <- pROC::roc((testDF[,"col2bclassified"]), predictions.nnet.insample[[2]])
+    print(auc.nnet$auc)
+
+  }else{
+
+    auc.nnet <- NA
+    auc.nnet$auc <- NA
+    pass <- 0
+    nnetConfusion <- NA
+
+  }
+
+
+  if(exists("fit.knn") && (class(fit.knn) == "train")){
+
+    predictions.knn.insample <- predict(fit.knn, newdata=testDF,type='prob')
+    
+    #for confusion matrix
+    predictions.knn.insample.Forconfusion <- predict(fit.knn, newdata=testDF)
+    knnConfusion <- confusionMatrix((testDF[,"col2bclassified"]),predictions.knn.insample.Forconfusion)
+    knnConfusion <- knnConfusion$table
+    
+    #for AUC
+    postResample(pred=predictions.knn.insample[[2]], obs=ifelse(testDF[,"col2bclassified"]=='yes',1,0))
+    auc.knn <- pROC::roc((testDF[,"col2bclassified"]), predictions.knn.insample[[2]])
+    print(auc.knn$auc)
+
+  }else{
+
+    auc.knn <- NA
+    auc.knn$auc <- NA
+    pass <- 0
+    knnConfusion <- NA
+
+  }
+
+  if(exists("fit.gbm") && (class(fit.gbm) == "train")){
+
+    predictions.gbm.insample <- predict(fit.gbm, newdata=testDF,type='prob')
+    
+    #for confusion matrix
+    predictions.gbm.insample.Forconfusion <- predict(fit.gbm, newdata=testDF)
+    gbmConfusion <- confusionMatrix((testDF[,"col2bclassified"]),predictions.gbm.insample.Forconfusion)
+    gbmConfusion <- gbmConfusion$table
+    
+    #for AUC
+    postResample(pred=predictions.gbm.insample[[2]], obs=ifelse(testDF[,"col2bclassified"]=='yes',1,0))
+    auc.gbm <- pROC::roc((testDF[,"col2bclassified"]), predictions.gbm.insample[[2]])
+    print(auc.gbm$auc)
+
+  }else{
+
+    auc.gbm <- NA
+    auc.gbm$auc <- NA
+    pass <- 0
+    gbmConfusion <- NA
+
+  }
+
+
+
+  if(exists("fit.naive_bayes") && (class(fit.naive_bayes) == "train")){
+
+    predictions.naives.insample <- predict(fit.naive_bayes, newdata=testDF,type='prob')
+    predictions.naives.insample.Forconfusion <- predict(fit.naive_bayes, newdata=testDF)
+
+     #When predictions are all NAN then AUC calculations will error. This error check needs to be put for other algorithms too
+    aucErrorHandler <- function(){
+
+      tryCatch(
+        # This is what I want to do:
+
+        postResample(pred=predictions.naives.insample[[2]], obs=ifelse(testDF[,"col2bclassified"]=='yes',1,0)),
+        # ... but if an error occurs, tell me what happened:
+        error=function(error_message) {
+          print("And below is the error message from R:")
+          print(error_message)
+
+          return(NA)
+        }
+      )
+
+      tryCatch(
+        # This is what I want to do:
+        #for AUC
+        auc.naives <- pROC::roc((testDF[,"col2bclassified"]),predictions.naives.insample[[2]]),
+
+        # ... but if an error occurs, tell me what happened:
+        error=function(error_message) {
+          print("And below is the error message from R:")
+          print(error_message)
+
+          return(NA)
+        }
+      )
+
+      
+     if(exists("auc.naives")){
+        
+        delayedAssign("do.next", {next}) 
+  
+      }else{
+        
+        auc.naives <- NA
+        auc.naives$auc <- NA
+        pass <- 0
+
+      }
+
+      return(auc.naives)
+
+    }
+
+    confusionErrorHandler <- function(){
+      
+      tryCatch(
+        # This is what I want to do:
+        #for confusion matrix
+        naivesConfusion <- confusionMatrix((testDF[,"col2bclassified"]),predictions.naives.insample.Forconfusion),
+        
+        # ... but if an error occurs, tell me what happened:
+        error=function(error_message) {
+          print("And below is the error message from R:")
+          print(error_message)
+          
+          return(NA)
+        }
+      )
+      
+      tryCatch(
+        # This is what I want to do:
+        #for confusion matrix
+        naivesConfusion <- naivesConfusion$table,
+        
+        # ... but if an error occurs, tell me what happened:
+        error=function(error_message) {
+          print("And below is the error message from R:")
+          print(error_message)
+          
+          return(NA)
+        }
+      )
+      
+      if(exists("naivesConfusion")){
+        
+        delayedAssign("do.next", {next}) 
+        
+      }else{
+
+        naivesConfusion <- NA
+        
+      }
+      
+      
+      return(naivesConfusion)
+      
+    }
+    
+    auc.naives <- aucErrorHandler();
+    naivesConfusion <- confusionErrorHandler();
+
+
+  }else{
+
+    auc.naives <- NA
+    auc.naives$auc <- NA
+    pass <- 0
+
+  }
+
+  Sys.time() - (start)  #compute training time
+  
+  #for debugging purpose only
+  # fit.logit <- 0.5;fit.nnet <- 0.6;fit.knn <- 0.8;fit.gbm <- 0.25
+  # auc.logit <- NA; auc.nnet <- NA; auc.knn <- NA; auc.gbm <- NA
+  # auc.logit[[1]] <- 0.3; auc.nnet[[1]] <- 0.5; auc.knn[[1]] <- 0.6; auc.gbm[[1]] <- 0.3
+  # auc.logit$auc <- 0.5; auc.nnet$auc <- 0.6; auc.knn$auc <- 0.7; auc.gbm$auc <- 0.8
+
+  #check model accuracy for binomial case
+  if(length(fac.lev) == 2){
+    
+    aucList <- list(as.numeric(auc.logit$auc), as.numeric(auc.nnet$auc), as.numeric(auc.knn$auc), as.numeric(auc.gbm$auc), 
+                    as.numeric(auc.naives$auc))
+    
+    #for AUC
+    modelList <- list(fit.logit,fit.nnet,fit.knn,fit.gbm,fit.naive_bayes)
+    bestAccuracy <- which.max(aucList)
+    bestModel <- modelList[bestAccuracy]
+    
+    #for confusion matrix
+    confusionList <- list(logitConfusion, nnetConfusion, knnConfusion,gbmConfusion, naivesConfusion)
+    bestConfusion <- confusionList[bestAccuracy]
+    
+    # mylogit <- bestModel
+    
+  }else{
+    
+    bestConfusion <- NA
+    
+  }
+  
+  #check model accuracy for multinomial case
+  if(length(fac.lev) > 2){
+    
+    refitMultinom <- multinom(mylogit, newdata=testDF)
+    multinomDeviance <- refitMultinom$deviance
+    
+  }
+  
+  
+  caretModelList <- list(auc.nnet[[1]], auc.knn[[1]], auc.gbm[[1]], auc.naives[[1]])
+  
+  
+  #model accuracy metrics
+  models.accuracy.metrics <- data.frame()
+  # names(myforecast) <- c(names)
+  models.accuracy.metrics <- data.frame(matrix(ncol = 3, nrow =5))
+  names(models.accuracy.metrics) <- c("model_name", "metric_name", "metric_value")
+  
+  if(length(fac.lev) == 2 && any(!is.na(caretModelList))){
+    
+    metric_name <- c("AUC")
+    model_name <- c("Logistic Regression","Neurelnet", "KNN", "Gradient Boost", "Navie Bayes")
+    metric_value <- c(as.numeric(auc.logit$auc), as.numeric(auc.nnet$auc), as.numeric(auc.knn$auc), as.numeric(auc.gbm$auc), 
+                      as.numeric(auc.naives$auc))
+    
+    # confusion_Matrix <- confusionMatrix(bestModel)
+    
+    baseLogit <- 0
+    
+  }else if(length(fac.lev) > 2){
+    
+    metric_name <- c("Deviance")
+    model_name <- c("Multinom from Base R")
+    metric_value <- c(multinomDeviance)
+    
+    baseLogit <- 0
+    
+  }else{
+    
+    #just for logistic regression when eveything else fails
+    refit.baseLogisticRegression <- glm(fit.baseLogisticRegression, data = testDF,family = binomial(link="logit"), x=TRUE) 
+    
+    bestModel <- fit.baseLogisticRegression
+    
+    AIC_Logit <- refit.baseLogisticRegression$aic
+    
+    metric_name <- c("AIC")
+    model_name <- c("Logistic Regression from Base R")
+    metric_value <- c(AIC_Logit)
+    
+    baseLogit <- 1
+    
+  }
+  
+  models.accuracy.metrics$model_name <- model_name
+  models.accuracy.metrics$metric_name <- metric_name
+  models.accuracy.metrics$metric_value <- metric_value
+  
   #remove the regressand from the final data frame
   df.imp1.lev5.num[,ncol(df.imp1.lev5.num)] <- NULL
-
+  
   #get the list of regressors to be used in the model
   col.name.final <- names(df.imp1.lev5.num)
-
-  #check for response data type and ship with the blackbox
-  # (
-  # This is done above
-  # )
-
-  #put the model and colnames into a list
-  mylogit <- serialize(mylogit,NULL)
-  blackbox <- list(mylogit,fac.lev,dat.typ,y.dat.typ,myresponse)
-  model.colnames.lev <- list(blackbox,col.name.final)
-  names(model.colnames.lev) <- c("model","predictors")
-
+  
+  #convert confusionmatrix to a dataframe
+  bestConfusion_metrics <- data.frame()
+  bestConfusion_metrics <- data.frame(matrix(ncol = 3, nrow = 3))
+  names(bestConfusion_metrics) <- c("Predicted", "Reference", "reference")
+  bestConfusion <- bestConfusion[[1]]
+  tn <- bestConfusion[1,1]
+  fn <- bestConfusion[2,1]
+  fp <- bestConfusion[1,2]
+  tp <- bestConfusion[2,2]
+  col1 = c('','neg', 'pos')
+  col2 = c('neg',tn, fn)
+  col3 = c('pos',fp, tp)
+  bestConfusion_metrics$Predicted <- col1
+  bestConfusion_metrics$Reference <- col2
+  bestConfusion_metrics$reference <- col3
+ 
+   #put the model and colnames into a list
+  # bestModelSerialized <- serialize(bestModel,NULL) #assigning the serialized model to an object will error during unserialization
+  blackbox <- list((serialize(bestModel,NULL)),fac.lev,dat.typ,y.dat.typ, baseLogit,myresponse,trainDF)
+  model.colnames.lev <- list(blackbox,col.name.final, models.accuracy.metrics, bestConfusion_metrics)
+  names(model.colnames.lev) <- c("model","predictors", "accuracy_metrics", "confusionMatrix")
+  
   return(model.colnames.lev)
 }
 
 ############  OUT of the box Score function ########
 autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
-
-  #init
+  library(data.table)
+  library(Hmisc)
+  require(foreign)
+  require(MASS)
+  require(nnet)
   init()
-
   df.test.save <- df.test
-
+  
   df<- df.test
-
+  
   #check the data types
   dat.typ <- capture.output(str(df))
-
+  
   #Put underscore for column names with spaces
   #names(df) <- gsub(" ", "_", names(df))
 
   column.names <- names(df)
   df.orig <- df # saving the original data frame
-
+  
   #remove dollar sign from numeric columns. If this leads to na then the column is rest back to default data type
   for(i in 1:ncol(df)){
     df[[column.names[i]]] <- as.numeric(sub(',','', sub('\\$','',df[[column.names[i]]])))
@@ -737,20 +1218,20 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
       print("No na, column type is set to numeric")
     }
   }
-
+  
   #seperate numeric and non  numeric columns
   df <- as.data.frame(df)
   df.nums <- sapply(df, is.numeric)
-  df.num <- as.data.frame(df[ , df.nums])
-  #below 2 lines will keep the numeric data frame column names as valid names
+  df.num <- as.data.frame(df[ , df.nums]) 
+  #below 2 lines will keep the numeric data frame column names as valid names 
   num.names <- names(df.nums)
   names(df.nums) <- c(num.names)
-  df.char <- as.data.frame(df[, !(df.nums)])
-  #below 2 lines will keep the character data frame column names as valid names
+  df.char <- as.data.frame(df[, !(df.nums)])  
+  #below 2 lines will keep the character data frame column names as valid names 
   char.names <- names(df.char)
   names(df.char) <- c(char.names)
-
-  #check and impute
+  
+  #check and impute 
   m <- sapply(df, function(x) sum(is.na(x)))
   for(j in 1:length(m)){
     # print("Here")
@@ -772,16 +1253,16 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
     print ("No impute required")
     delayedAssign("do.next", {next}) #without this r gives an error "Error: no loop for break/next, jumping to top level"
   }else{
-    df.imp1 <- cbind(df.imp, df.char)
+    df.imp1 <- cbind(df.imp, df.char) 
   }
   
   #Convert column with type character to factors
-  imp.column.names <- names(df.imp1)
+  imp.column.names <- names(df.imp1)  
   for(k in 1:length(imp.column.names)){
     col.class <- class(df.imp1[[imp.column.names[k]]])
     if(col.class == "character"){
       print("This is a character type")
-      df.imp1[[imp.column.names[k]]] <- as.factor(df.imp1[[imp.column.names[k]]])
+      df.imp1[[imp.column.names[k]]] <- as.factor(df.imp1[[imp.column.names[k]]]) 
     }else{
       print("No character types found")
     }
@@ -803,7 +1284,7 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
       }
     }
   }
-
+  
   #########copy end ########
     
   
@@ -818,17 +1299,42 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
   modelFactorNames <- names(mod$xlevels)
   
   
+    if(class(mod) == "list"){
+      
+      modelFactorNames <- names(mod[[1]]$xlevels)
+      modelLevels <- mod[[1]]$xlevels
+      modelTrainData <- mod[[1]]$trainingData
+      
+      
+    }else if (class(mod) == "multinom"){
+      
+      modelFactorNames <- names(mod$xlevels)
+      modelLevels <- mod$xlevels
+      modelTrainData <- mod.lev.typ[7] #Training data from best model. This is coming from balckboxModel
+      
+      
+    }else{
+      
+      modelFactorNames <- names(mod$xlevels)
+      modelLevels <- mod$xlevels
+      modelTrainData <- mod$model
+      
+    }
+    
+
+  scoreMatrix <- matrix()
+ 
   matchFactorLevels <- function(df.imp1,mod,modelFactorNames){
     
     
     for(i in 1:length(modelFactorNames)){
       
-      modelLevels <- mod$xlevels[[i]]
+      localmodelLevels <- modelLevels[[i]]
       testLevels <- levels(df.imp1[[modelFactorNames[i]]])  
       
-      if(!identical(modelLevels,testLevels)){
+      if(!identical(localmodelLevels,testLevels)){
         
-        xlevels <- mod$xlevels[[modelFactorNames[i]]]
+        xlevels <- modelLevels[[modelFactorNames[i]]]
         newLevel <- xlevels[1]
         replacement <- factor(rep(newLevel, length = nrow(df.imp1)),levels = xlevels) 
         df.imp1[[modelFactorNames[i]]] <- replacement
@@ -850,57 +1356,92 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
   }
   
   
-  if(!is_empty(mod$xlevels)){
+  if(!is_empty(modelLevels)){
     
     scoreMatrix <- matchFactorLevels(df.imp1, mod,modelFactorNames)
     
-    common <- names(scoreMatrix)[names(scoreMatrix) %in% names(mod$model)]
+    common <- names(scoreMatrix)[names(scoreMatrix) %in% names(modelTrainData)]
     scoreMatrix[common] <- lapply(common, function(x) {
-      match.fun(paste0("as.", class(mod$model[[x]])))(scoreMatrix[[x]])
+      match.fun(paste0("as.", class(modelTrainData[[x]])))(scoreMatrix[[x]])
+    })
+    
+  }else{
+    
+    scoreMatrix <- df.imp1
+    
+    common <- names(scoreMatrix)[names(scoreMatrix) %in% names(modelTrainData)]
+    scoreMatrix[common] <- lapply(common, function(x) {
+    match.fun(paste0("as.", class(modelTrainData[[x]])))(scoreMatrix[[x]])
     })
     
   }
 
-  
- lev <- length(mod.lev.typ[[2]])
- typ <- mod.lev.typ[[3]]
- 
+  lev <- length(mod.lev.typ[[2]])
+  typ <- mod.lev.typ[[3]]
   #Instead of an extra arguement called multinomial, check for the levels for resposne in train model and decide for multinomial
   # lev <- length(levels(as.factor(mylogit$lev)))
   if(lev > 2){
     print("Selecting multinomial")
     print("Posterior cutoff is ignored")
-    predictions <- predict(mod, newdata=df.imp1, "class")
-    df.test.save$predictions <- (predictions)
+    predictions <- predict(mod, newdata=scoreMatrix, type= "class")
+    # df.test.save$predictions <- as.integer(predictions)
+    df.test.save$predictions <- predictions
   }else{
     print("Selecting binomial")
-    
-     glm_response_scores <- round(predict(mod, scoreMatrix, type="response"),2)
-    #get lables
-    if(missing(posteriorCutoff)){
+    if(mod.lev.typ[5] == 1){
+      print("Base logistic regression only")
+      glm_response_scores <- round(predict(mod, scoreMatrix, type="response"),2)
+    }else{
+      glm_response_scores <- predict(mod, scoreMatrix, type="prob")
+      glm_response_scores <- as.data.frame(glm_response_scores)
+    }
+  
+      #get labels
+    if(missing(posteriorCutoff) && (mod.lev.typ[5] == 0)){
       print("Using default posterior cutoff")
       posteriorCutoff <- 0.5
-      if(mod.lev.typ[[4]] == "lable"){
-        predictions <- ifelse(glm_response_scores>posteriorCutoff, 'yes','no')
+      # if(mod.lev.typ[[4]] == "label"){
+      if(!is.integer(as.integer(mod.lev.typ[[2]])) || is.na(as.integer(mod.lev.typ[[2]]))){
+        labelName <-  mod.lev.typ[[2]][2]
+        predictions <- ifelse(glm_response_scores[[labelName]] > posteriorCutoff, labelName, mod.lev.typ[[2]][1])
         df.test.save$predictions <- predictions
       }else{
-        predictions <- ifelse(glm_response_scores>posteriorCutoff, '1','0')
+        predictions <- ifelse(glm_response_scores$yes > posteriorCutoff, '1','0')
         df.test.save$predictions <- as.integer(predictions)
       }
-    }else{
+      # }
+    
+    }else if((mod.lev.typ[5] == 0)){
       print("Using user supplied posterior cutoff")
-      if(mod.lev.typ[[4]] == "lable"){
-        predictions <- ifelse(glm_response_scores>posteriorCutoff, 'yes','no')
+      # if(mod.lev.typ[[4]] == "label"){
+      if(!is.integer(as.integer(mod.lev.typ[[2]])) || is.na(as.integer(mod.lev.typ[[2]]))){
+        labelName <-  mod.lev.typ[[2]][2]
+        predictions <- ifelse(glm_response_scores[[labelName]] > posteriorCutoff, labelName, mod.lev.typ[[2]][1])
         df.test.save$predictions <- predictions
       }else{
-        predictions <- ifelse(glm_response_scores>posteriorCutoff, '1','0')
+        predictions <- ifelse(glm_response_scores$yes > posteriorCutoff, '1','0')
         df.test.save$predictions <- as.integer(predictions)
       }
+        
+      # }
+  
+    }else{
+      #else check may not be required, need to double check
+      posteriorCutoff <- 0.5
+      
+      if(mod.lev.typ[[4]] == "lable"){
+        predictions <- ifelse(glm_response_scores > posteriorCutoff, 'yes','no')
+        df.test.save$predictions <- predictions
+      }else{
+        predictions <- ifelse(glm_response_scores > posteriorCutoff, '1','0')
+        df.test.save$predictions <- as.integer(predictions)
+      }
+      
     }
   }
   #rename the predictions column to the train response column name
-  names(df.test.save)[length(names(df.test.save))] <- mod.lev.typ[[5]]
-
+  names(df.test.save)[length(names(df.test.save))] <- mod.lev.typ[[6]]  
+  
   return(df.test.save)
 }
 
