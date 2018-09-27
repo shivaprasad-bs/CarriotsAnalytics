@@ -811,7 +811,7 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
                 self.__handleSimulateUpdate__(df = df, label2Col = label2Col, _type = _type)
         
         def addModel(self, model=None, label = None, description = None, predictors = None,
-                     params = None, metrics = None):
+                     params = None, metrics = None, confusionMatrix = None):
             if(model is None):
                 print("No model provided to register")
                 return False
@@ -831,6 +831,9 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             
             if(metrics is not None):
                 myModel['metrics'] = metrics.to_json(orient='split')
+                
+            if(confusionMatrix is not None):
+                myModel['confusionMatrix'] = confusionMatrix.to_json(orient='split')
             
             params = {}
             params['dstoken'] = token

@@ -1025,7 +1025,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
       # ////////////////////////////////////////////////////////////////////////////////////////////
 
       addModel = function(model = NULL,label = NULL,description=NULL,
-                          predictors = NULL, params = NULL, metrics = NULL) {
+                          predictors = NULL, params = NULL, metrics = NULL, confusionMatrix = NULL) {
 
         if(is.null(model)) {
           print("No models provided to register")
@@ -1042,6 +1042,7 @@ connect.ca <- function(url=NULL, token=NULL, apiKey=NULL, tunnelHost) {
         myModel$predictors = predictors
         myModel$params = params
         myModel$metrics = metrics
+		myModel$confusionMatrix = confusionMatrix
 
         .ca.modelList[[length(.ca.modelList)+1]] <<- myModel
 
@@ -1180,9 +1181,9 @@ update.ca = function(conn = NULL,
 #'@export
 addModel.ca = function(conn = NULL,
                      model = NULL,label = NULL,description=NULL,
-                     predictors = NULL, params = NULL, metrics = NULL) {
+                     predictors = NULL, params = NULL, metrics = NULL, confusionMatrix = NULL) {
   conn$addModel(model = model,label = label,description=description,
-                predictors = predictors, params = params, metrics = metrics)
+                predictors = predictors, params = params, metrics = metrics, confusionMatrix = confusionMatrix)
 }
 
 ##################################################################################

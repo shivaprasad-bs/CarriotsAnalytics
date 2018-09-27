@@ -30,7 +30,7 @@ learn.ca = function() {
 
     #Add the models
     con$addModel(model = modelInfo$model,label = "autoClassify",description = "Default_AutoClassify_model_from_CA"
-                 ,predictors = modelInfo$predictors,metrics = modelInfo$metrics)
+                 ,predictors = modelInfo$predictors,metrics = modelInfo$metrics, confusionMatrix = modelInfo$confusionMatrix)
   },
   error = function(e) {
     msg = paste(conditionMessage(e), sapply(sys.calls(),function(sc)deparse(sc)[1]), sep="\n   ")
@@ -129,7 +129,7 @@ forecast.ca = function() {
       #Add the models
       mLabel <- "autoForecast"
       con$addModel(model = output$model,label = mLabel,description = "Default_AutoForecast_model_from_CA",
-                   metrics = output$accuracy_metrics)
+                   metrics = output$accuracy_metrics, confusionMatrix = modelInfo$confusionMatrix)
       model_name <- mLabel
       #If there are any special characters, do MD5- same logic as CA App
       if(!grepl("^[a-zA-Z0-9\\s\\(\\)_/]+$",model_name))
@@ -516,6 +516,21 @@ autoClassify <- function(df, col2bclassified) {
 
   column.names <- names(df)
   df.orig <- df # saving the original data frame
+  
+  #envision puts NA in place of blanks  
+  convertNAToBlanks <- function(df) {
+
+    for(i in 1:ncol(df)){
+      
+      df[[column.names[i]]][is.na(df[[column.names[i]]])] <- " "
+      
+    }
+    
+    return(df)
+
+  }
+  
+  df <- convertNAToBlanks(df)
 
   #remove dollar sign from numeric columns. If this leads to na then the column is rest back to default data type
   for(i in 1:ncol(df)){
@@ -760,7 +775,7 @@ autoClassify <- function(df, col2bclassified) {
     modelglm <- function(){
       tryCatch(
         # This is what I want to do:
-        fit.logit<- train(col2bclassified ~ .,data=trainDF, method="glm", metric="Accuracy", trControl=objControl, prox=F)
+        fit.logit<- train(col2bclassified ~ .,data=trainDF, method="glm", metric="Accuracy", trControl=objControl, prox=F, na.action = na.omit)
         ,
         # ... but if an error occurs, tell me what happened:
         error=function(error_message) {
@@ -777,7 +792,7 @@ autoClassify <- function(df, col2bclassified) {
       tryCatch(
         # This is what I want to do:
 
-        fit.nnet<- train(col2bclassified ~ .,data=trainDF, method="nnet", metric="Accuracy", trControl=objControl)
+        fit.nnet<- train(col2bclassified ~ .,data=trainDF, method="nnet", metric="Accuracy", trControl=objControl,na.action = na.omit)
         ,
         # ... but if an error occurs, tell me what happened:
         error=function(error_message) {
@@ -793,7 +808,7 @@ autoClassify <- function(df, col2bclassified) {
     modelgbm  <- function(){
       tryCatch(
         # This is what I want to do:
-        fit.gbm <- train(col2bclassified ~ .,data=trainDF, method="gbm", metric="Accuracy", trControl=objControl)
+        fit.gbm <- train(col2bclassified ~ .,data=trainDF, method="gbm", metric="Accuracy", trControl=objControl,na.action = na.omit)
         ,
         # ... but if an error occurs, tell me what happened:
         error=function(error_message) {
@@ -810,7 +825,7 @@ autoClassify <- function(df, col2bclassified) {
     modelknn <- function(){
       tryCatch(
         # This is what I want to do:
-        fit.knn <- train(col2bclassified ~ .,data=trainDF, method="knn", metric="Accuracy", trControl=objControl)
+        fit.knn <- train(col2bclassified ~ .,data=trainDF, method="knn", metric="Accuracy", trControl=objControl,na.action = na.omit)
         ,
         # ... but if an error occurs, tell me what happened:
         error=function(error_message) {
@@ -826,7 +841,7 @@ autoClassify <- function(df, col2bclassified) {
     modelnaive_bayes <- function(){
       tryCatch(
         # This is what I want to do:
-        fit.naive_bayes <- train(col2bclassified ~ .,data=trainDF, method="naive_bayes", metric="Accuracy", trControl=objControl,type="raw")
+        fit.naive_bayes <- train(col2bclassified ~ .,data=trainDF, method="naive_bayes", metric="Accuracy", trControl=objControl,type="raw",na.action = na.omit)
         ,
         # ... but if an error occurs, tell me what happened:
         error=function(error_message) {
@@ -996,7 +1011,8 @@ fit.baseLogisticRegression <- modelBaseLogisticRegression()
       
      if(exists("auc.naives")){
         
-        delayedAssign("do.next", {next}) 
+       print("treating AUC Naives as is")
+        # delayedAssign("do.next", {next})
   
       }else{
         
@@ -1042,7 +1058,9 @@ fit.baseLogisticRegression <- modelBaseLogisticRegression()
       
       if(exists("naivesConfusion")){
         
-        delayedAssign("do.next", {next}) 
+        print("treating Naives confusion as is")
+        
+        # delayedAssign("do.next", {next})
         
       }else{
 
@@ -1182,7 +1200,7 @@ fit.baseLogisticRegression <- modelBaseLogisticRegression()
   # bestModelSerialized <- serialize(bestModel,NULL) #assigning the serialized model to an object will error during unserialization
   blackbox <- list((serialize(bestModel,NULL)),fac.lev,dat.typ,y.dat.typ, baseLogit,myresponse,trainDF)
   model.colnames.lev <- list(blackbox,col.name.final, models.accuracy.metrics, bestConfusion_metrics)
-  names(model.colnames.lev) <- c("model","predictors", "accuracy_metrics", "confusionMatrix")
+  names(model.colnames.lev) <- c("model","predictors","metrics", "confusionMatrix")
   
   return(model.colnames.lev)
 }

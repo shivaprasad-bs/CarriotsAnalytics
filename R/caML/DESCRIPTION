@@ -1,6 +1,6 @@
 Package: caML
 Title: Provides default Learn and scoring mechanism for Carriots Analytics
-Version: 1.0.1
+Version: 1.0.2
 Authors@R: person("Aravind", "S Reddy", email = "aravind.reddy@altair.com", role = c("aut", "cre"))
 Description: Default Machine learning algorithms for Carriots Analytics.
 Depends: R (>= 3.4.0)
