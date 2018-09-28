@@ -102,7 +102,7 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             
             colString = "("
             for i,e in enumerate(colNames):
-                if(i > 1):
+                if(i > 0):
                     colString = colString + ","
                     
                 colString = colString + self.__conn_data__.quot(e) +" "+\
