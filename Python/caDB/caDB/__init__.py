@@ -14,14 +14,13 @@ from os import sep,path
 from sys import exc_info,modules
 from requests import post
 from base64 import b64decode
-from pandas import DataFrame,concat
+from pandas import DataFrame,concat,notnull
 from re import sub
 import numpy as np
 from json import dumps
 import hashlib
 import jaydebeapi
 import pickle
-import re
 
 CA_DEFAULT_PAGE_SIZE = 100000
 _caParams = None
@@ -169,14 +168,14 @@ def connect_ca(url=None,token=None,apikey=None,tunnelHost = None):
             query = query + colNames + " VALUES "
             
             values = ""
-            
+            #replace all NAN's and None's to NULL - for SQL compatibility
+            df = df.where((notnull(df)), 'NULL')
             for index,row in df.iterrows():
                 if(index > 0):
                     values = values + " , "
                 
                 _row = df.loc[index,].values
                 values = values + "(" + (",".join("'"+sub("'","''",str(x)) + "'" for x in _row))+ ")"
-                values = values.replace('<NA>','NULL')
             
             query = query + values
             print("Insert query not printing as it is huge")

@@ -12,7 +12,7 @@ setup(
     # Versions should comply with PEP440.  For a discussion on single-sourcing
     # the version across setup.py and the project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version='1.0.4',
+    version='1.0.5',
 
     description='Library to connect to Carriots Analytics application',
     long_description='Connect to carriots analytics application and perform load/update operations on the datasources using datasource token',
