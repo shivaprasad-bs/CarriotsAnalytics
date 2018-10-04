@@ -838,21 +838,21 @@ autoClassify <- function(df, col2bclassified) {
 
     fit.knn <- modelknn()
 
-    modelnaive_bayes <- function(){
-      tryCatch(
-        # This is what I want to do:
-        fit.naive_bayes <- train(col2bclassified ~ .,data=trainDF, method="naive_bayes", metric="Accuracy", trControl=objControl,type="raw",na.action = na.omit)
-        ,
-        # ... but if an error occurs, tell me what happened:
-        error=function(error_message) {
-          print("And below is the error message from R:")
-          print(error_message)
-          return(NaN)
-        }
-      )
-    }
-
-    fit.naive_bayes <- modelnaive_bayes()
+    # modelnaive_bayes <- function(){
+    #   tryCatch(
+    #     # This is what I want to do:
+    #     fit.naive_bayes <- train(col2bclassified ~ .,data=trainDF, method="naive_bayes", metric="Accuracy", trControl=objControl,type="raw",na.action = na.omit)
+    #     ,
+    #     # ... but if an error occurs, tell me what happened:
+    #     error=function(error_message) {
+    #       print("And below is the error message from R:")
+    #       print(error_message)
+    #       return(NaN)
+    #     }
+    #   )
+    # }
+    # 
+    # fit.naive_bayes <- modelnaive_bayes()
 
 modelBaseLogisticRegression <- function(){
   tryCatch(
@@ -973,118 +973,121 @@ fit.baseLogisticRegression <- modelBaseLogisticRegression()
 
 
 
-  if(exists("fit.naive_bayes") && (class(fit.naive_bayes) == "train")){
-
-    predictions.naives.insample <- predict(fit.naive_bayes, newdata=testDF,type='prob')
-    predictions.naives.insample.Forconfusion <- predict(fit.naive_bayes, newdata=testDF)
-
-     #When predictions are all NAN then AUC calculations will error. This error check needs to be put for other algorithms too
-    aucErrorHandler <- function(){
-
-      tryCatch(
-        # This is what I want to do:
-
-        postResample(pred=predictions.naives.insample[[2]], obs=ifelse(testDF[,"col2bclassified"]=='yes',1,0)),
-        # ... but if an error occurs, tell me what happened:
-        error=function(error_message) {
-          print("And below is the error message from R:")
-          print(error_message)
-
-          return(NA)
-        }
-      )
-
-      tryCatch(
-        # This is what I want to do:
-        #for AUC
-        auc.naives <- pROC::roc((testDF[,"col2bclassified"]),predictions.naives.insample[[2]]),
-
-        # ... but if an error occurs, tell me what happened:
-        error=function(error_message) {
-          print("And below is the error message from R:")
-          print(error_message)
-
-          return(NA)
-        }
-      )
-
-      
-     if(exists("auc.naives")){
-        
-       print("treating AUC Naives as is")
-        # delayedAssign("do.next", {next})
-  
-      }else{
-        
-        auc.naives <- NA
-        auc.naives$auc <- NA
-        pass <- 0
-
-      }
-
-      return(auc.naives)
-
-    }
-
-    confusionErrorHandler <- function(){
-      
-      tryCatch(
-        # This is what I want to do:
-        #for confusion matrix
-        naivesConfusion <- confusionMatrix((testDF[,"col2bclassified"]),predictions.naives.insample.Forconfusion),
-        
-        # ... but if an error occurs, tell me what happened:
-        error=function(error_message) {
-          print("And below is the error message from R:")
-          print(error_message)
-          
-          return(NA)
-        }
-      )
-      
-      tryCatch(
-        # This is what I want to do:
-        #for confusion matrix
-        naivesConfusion <- naivesConfusion$table,
-        
-        # ... but if an error occurs, tell me what happened:
-        error=function(error_message) {
-          print("And below is the error message from R:")
-          print(error_message)
-          
-          return(NA)
-        }
-      )
-      
-      if(exists("naivesConfusion")){
-        
-        print("treating Naives confusion as is")
-        
-        # delayedAssign("do.next", {next})
-        
-      }else{
-
-        naivesConfusion <- NA
-        
-      }
-      
-      
-      return(naivesConfusion)
-      
-    }
-    
-    auc.naives <- aucErrorHandler();
-    naivesConfusion <- confusionErrorHandler();
-
-
-  }else{
-
-    auc.naives <- NA
-    auc.naives$auc <- NA
-    pass <- 0
-
-  }
-
+  # if(exists("fit.naive_bayes") && (class(fit.naive_bayes) == "train")){
+  # 
+  #   predictions.naives.insample <- predict(fit.naive_bayes, newdata=testDF,type='prob')
+  #   predictions.naives.insample.Forconfusion <- predict(fit.naive_bayes, newdata=testDF)
+  # 
+  #    #When predictions are all NAN then AUC calculations will error. This error check needs to be put for other algorithms too
+  #   aucErrorHandler <- function(){
+  # 
+  #     tryCatch(
+  #       # This is what I want to do:
+  # 
+  #       postResample(pred=predictions.naives.insample[[2]], obs=ifelse(testDF[,"col2bclassified"]=='yes',1,0)),
+  #       # ... but if an error occurs, tell me what happened:
+  #       error=function(error_message) {
+  #         print("And below is the error message from R:")
+  #         print(error_message)
+  # 
+  #         return(NA)
+  #       }
+  #     )
+  # 
+  #     tryCatch(
+  #       # This is what I want to do:
+  #       #for AUC
+  #       auc.naives <- pROC::roc((testDF[,"col2bclassified"]),predictions.naives.insample[[2]]),
+  # 
+  #       # ... but if an error occurs, tell me what happened:
+  #       error=function(error_message) {
+  #         print("And below is the error message from R:")
+  #         print(error_message)
+  # 
+  #         return(NA)
+  #       }
+  #     )
+  # 
+  #     
+  #    if(exists("auc.naives")){
+  #       
+  #      print("treating AUC Naives as is")
+  #       # delayedAssign("do.next", {next})
+  # 
+  #     }else{
+  #       
+  #       auc.naives <- NA
+  #       auc.naives$auc <- NA
+  #       pass <- 0
+  # 
+  #     }
+  # 
+  #     return(auc.naives)
+  # 
+  #   }
+  # 
+  #   confusionErrorHandler <- function(){
+  #     
+  #     tryCatch(
+  #       # This is what I want to do:
+  #       #for confusion matrix
+  #       naivesConfusion <- confusionMatrix((testDF[,"col2bclassified"]),predictions.naives.insample.Forconfusion),
+  #       
+  #       # ... but if an error occurs, tell me what happened:
+  #       error=function(error_message) {
+  #         print("And below is the error message from R:")
+  #         print(error_message)
+  #         
+  #         return(NA)
+  #       }
+  #     )
+  #     
+  #     tryCatch(
+  #       # This is what I want to do:
+  #       #for confusion matrix
+  #       naivesConfusion <- naivesConfusion$table,
+  #       
+  #       # ... but if an error occurs, tell me what happened:
+  #       error=function(error_message) {
+  #         print("And below is the error message from R:")
+  #         print(error_message)
+  #         
+  #         return(NA)
+  #       }
+  #     )
+  #     
+  #     if(exists("naivesConfusion")){
+  #       
+  #       print("treating Naives confusion as is")
+  #       
+  #       # delayedAssign("do.next", {next})
+  #       
+  #     }else{
+  # 
+  #       naivesConfusion <- NA
+  #       
+  #     }
+  #     
+  #     
+  #     return(naivesConfusion)
+  #     
+  #   }
+  #   
+  #   auc.naives <- aucErrorHandler();
+  #   naivesConfusion <- confusionErrorHandler();
+  # 
+  # 
+  # }else{
+  # 
+  #   auc.naives <- NA
+  #   auc.naives$auc <- NA
+  #   pass <- 0
+  # 
+  # }
+  fit.naive_bayes <- NA
+  auc.naives <- NA
+  auc.naives$auc <- NA
+  naivesConfusion <- NA
   Sys.time() - (start)  #compute training time
   
   #for debugging purpose only
@@ -1181,24 +1184,33 @@ fit.baseLogisticRegression <- modelBaseLogisticRegression()
   col.name.final <- names(df.imp1.lev5.num)
   
   #convert confusionmatrix to a dataframe
-  bestConfusion_metrics <- data.frame()
-  bestConfusion_metrics <- data.frame(matrix(ncol = 3, nrow = 3))
-  names(bestConfusion_metrics) <- c("Predicted", "Reference", "reference")
-  bestConfusion <- bestConfusion[[1]]
-  tn <- bestConfusion[1,1]
-  fn <- bestConfusion[2,1]
-  fp <- bestConfusion[1,2]
-  tp <- bestConfusion[2,2]
-  col1 = c('','neg', 'pos')
-  col2 = c('neg',tn, fn)
-  col3 = c('pos',fp, tp)
-  bestConfusion_metrics$Predicted <- col1
-  bestConfusion_metrics$Reference <- col2
-  bestConfusion_metrics$reference <- col3
+  if(length(fac.lev) > 2){
+
+    bestConfusion_metrics <- NA
+
+  }else{
+      
+    bestConfusion_metrics <- data.frame()
+    bestConfusion_metrics <- data.frame(matrix(ncol = 3, nrow = 3))
+    names(bestConfusion_metrics) <- c("Predicted", "Reference", "reference")
+    bestConfusion <- bestConfusion[[1]]
+    tn <- bestConfusion[1,1]
+    fn <- bestConfusion[2,1]
+    fp <- bestConfusion[1,2]
+    tp <- bestConfusion[2,2]
+    col1 = c('','neg', 'pos')
+    col2 = c('neg',tn, fn)
+    col3 = c('pos',fp, tp)
+    bestConfusion_metrics$Predicted <- col1
+    bestConfusion_metrics$Reference <- col2
+    bestConfusion_metrics$reference <- col3
+    
+  }
+
  
    #put the model and colnames into a list
   # bestModelSerialized <- serialize(bestModel,NULL) #assigning the serialized model to an object will error during unserialization
-  blackbox <- list((serialize(bestModel,NULL)),fac.lev,dat.typ,y.dat.typ, baseLogit,myresponse,trainDF)
+  blackbox <- list(bestModel,fac.lev,dat.typ,y.dat.typ, baseLogit,myresponse,trainDF)
   model.colnames.lev <- list(blackbox,col.name.final, models.accuracy.metrics, bestConfusion_metrics)
   names(model.colnames.lev) <- c("model","predictors","metrics", "confusionMatrix")
   
@@ -1310,7 +1322,7 @@ autoClassifyScore <- function(df.test, mod.lev.typ,posteriorCutoff) {
   #blackbox <- model.colnames.lev[1] # They should pass me this
   #mylogit <- unserialize(blackbox$model[1])
   #blackbox.lev <- blackbox[[1]]
-  mod <- unserialize(mod.lev.typ[[1]])
+  mod <- mod.lev.typ[[1]]
 
   
   scoreMatrix <- matrix()
