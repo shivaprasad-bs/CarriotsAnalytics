@@ -129,7 +129,7 @@ forecast.ca = function() {
       #Add the models
       mLabel <- "autoForecast"
       con$addModel(model = output$model,label = mLabel,description = "Default_AutoForecast_model_from_CA",
-                   metrics = output$accuracy_metrics, confusionMatrix = modelInfo$confusionMatrix)
+                   metrics = output$accuracy_metrics, confusionMatrix = output$confusionMatrix)
       model_name <- mLabel
       #If there are any special characters, do MD5- same logic as CA App
       if(!grepl("^[a-zA-Z0-9\\s\\(\\)_/]+$",model_name))
